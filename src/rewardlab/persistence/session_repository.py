@@ -139,6 +139,17 @@ class SessionRepository:
         """
         return self._store.list_candidates(session_id)
 
+    def update_candidate(self, candidate_id: str, **fields: Any) -> None:
+        """
+        Update mutable fields on a candidate record.
+
+        Args:
+            candidate_id: Candidate identifier.
+            fields: Column values to update.
+        """
+        self._store.update_candidate_fields(candidate_id, fields)
+        self._events.append("candidate.updated", {"candidate_id": candidate_id, "fields": fields})
+
     def get_best_candidate(self, session_id: str) -> dict[str, Any] | None:
         """
         Resolve best candidate row based on session pointer.

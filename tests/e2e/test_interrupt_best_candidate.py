@@ -72,3 +72,55 @@ def test_interrupt_exports_best_candidate_report(monkeypatch: pytest.MonkeyPatch
     assert report_data["session_id"] == session_id
     assert report_data["best_candidate"]["candidate_id"] == stop_payload["best_candidate_id"]
     shutil.rmtree(root, ignore_errors=True)
+
+
+@pytest.mark.e2e
+def test_interrupt_before_first_iteration_uses_placeholder_selection_summary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """
+    Verify stopping immediately still produces a concrete best-candidate summary.
+    """
+    root = Path(".tmp-e2e-stop") / uuid4().hex
+    shutil.rmtree(root, ignore_errors=True)
+    root.mkdir(parents=True, exist_ok=True)
+    objective_file = root / "objective.txt"
+    baseline_file = root / "baseline.py"
+    objective_file.write_text("maximize stability", encoding="utf-8")
+    baseline_file.write_text("reward = 1.0", encoding="utf-8")
+    monkeypatch.setenv("REWARDLAB_DATA_DIR", str(root / "data"))
+
+    start_result = runner.invoke(
+        app,
+        [
+            "session",
+            "start",
+            "--objective-file",
+            str(objective_file),
+            "--baseline-reward-file",
+            str(baseline_file),
+            "--environment-id",
+            "cartpole-v1",
+            "--environment-backend",
+            "gymnasium",
+            "--no-improve-limit",
+            "3",
+            "--max-iterations",
+            "8",
+            "--feedback-gate",
+            "none",
+            "--json",
+        ],
+    )
+    assert start_result.exit_code == 0, start_result.stdout
+    session_id = json.loads(start_result.stdout)["session_id"]
+
+    stop_result = runner.invoke(app, ["session", "stop", "--session-id", session_id, "--json"])
+    assert stop_result.exit_code == 0, stop_result.stdout
+    stop_payload = json.loads(stop_result.stdout)
+
+    report_path = Path(stop_payload["report_path"])
+    report_data = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report_data["best_candidate"]["candidate_id"] == stop_payload["best_candidate_id"]
+    assert report_data["best_candidate"]["selection_summary"].startswith("Selected candidate ")
+    shutil.rmtree(root, ignore_errors=True)

@@ -235,6 +235,21 @@ class SQLiteStore:
             ).fetchone()
         return dict(row) if row else None
 
+    def update_candidate_fields(self, candidate_id: str, values: dict[str, Any]) -> None:
+        """
+        Update mutable fields on a candidate record.
+
+        Args:
+            candidate_id: Candidate identifier.
+            values: Mapping of columns to update values.
+        """
+        if not values:
+            return
+        assignments = ", ".join(f"{key} = ?" for key in values)
+        args = list(values.values()) + [candidate_id]
+        with self._connection() as conn:
+            conn.execute(f"UPDATE candidates SET {assignments} WHERE candidate_id = ?", args)
+
     def insert_reflection(self, payload: dict[str, Any]) -> None:
         """
         Insert one reflection record linked to a candidate.

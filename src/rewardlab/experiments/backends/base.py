@@ -7,7 +7,7 @@ Last Updated: 2026-04-02
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from rewardlab.schemas.session_config import EnvironmentBackend
@@ -25,6 +25,9 @@ class ExperimentInput:
     reward_definition: str
     iteration_index: int
     objective_text: str
+    variant_label: str = "default"
+    seed: int = 0
+    overrides: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(slots=True, frozen=True)
@@ -36,6 +39,7 @@ class ExperimentOutput:
     score: float
     metrics: dict[str, Any]
     summary: str
+    artifact_refs: tuple[str, ...] = ()
 
 
 class EnvironmentBackendAdapter(ABC):

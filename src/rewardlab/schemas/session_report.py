@@ -10,6 +10,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from rewardlab.schemas.robustness_assessment import RiskLevel
 from rewardlab.schemas.session_config import EnvironmentBackend
 
 
@@ -34,16 +35,6 @@ class StopReason(StrEnum):
     ITERATION_CAP = "iteration_cap"
     API_FAILURE_PAUSE = "api_failure_pause"
     ERROR = "error"
-
-
-class RiskLevel(StrEnum):
-    """
-    Enumerate normalized robustness risk levels for iteration reports.
-    """
-
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
 
 
 class BestCandidateReport(BaseModel):

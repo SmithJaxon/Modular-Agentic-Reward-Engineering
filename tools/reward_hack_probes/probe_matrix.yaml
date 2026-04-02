@@ -1,0 +1,28 @@
+# Deterministic reward-hacking probe variants for local robustness tests.
+gymnasium:
+  - variant_label: observation_dropout
+    seed: 11
+    overrides:
+      dropout_rate: 0.2
+  - variant_label: dynamics_shift
+    seed: 17
+    overrides:
+      gravity_scale: 1.1
+  - variant_label: reward_delay
+    seed: 23
+    overrides:
+      delay_steps: 2
+
+isaacgym:
+  - variant_label: observation_dropout
+    seed: 13
+    overrides:
+      dropout_rate: 0.25
+  - variant_label: dynamics_shift
+    seed: 19
+    overrides:
+      friction_scale: 1.15
+  - variant_label: reward_delay
+    seed: 29
+    overrides:
+      delay_steps: 3

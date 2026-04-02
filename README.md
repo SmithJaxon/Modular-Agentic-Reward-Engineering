@@ -6,16 +6,16 @@ robustness checks, and human or peer feedback gates.
 
 ## Current Status (2026-04-02)
 
-- Implemented: Phase 1 (setup), Phase 2 (foundational infra), Phase 3 (US1/MVP loop)
-- Next target: Phase 4 (US2 reward-hacking and overfitting detection)
-- Active implementation branch for completed work: `001-iterative-reward-design-impl-p1-p3`
+- Implemented: Phase 1 (setup), Phase 2 (foundational infra), Phase 3 (US1/MVP loop), Phase 4 (US2 robustness and reward-hacking detection)
+- Next target: Phase 5 (US3 human and peer feedback integration)
+- Phase 4 implementation branch: `001-iterative-reward-design-impl-p4`
 
 ## Primary Docs
 
 - Feature spec: `specs/001-iterative-reward-design/spec.md`
 - Implementation plan: `specs/001-iterative-reward-design/plan.md`
 - Task board: `specs/001-iterative-reward-design/tasks.md`
-- Phase 4 handoff and execution plan: `specs/001-iterative-reward-design/phase4-handoff.md`
+- Phase 5 handoff and execution plan: `specs/001-iterative-reward-design/phase5-handoff.md`
 - Operator quickstart: `specs/001-iterative-reward-design/quickstart.md`
 
 ## Local Setup (Project-Scoped Venv)
@@ -29,7 +29,7 @@ venv\Scripts\python.exe -m pip install -e .[dev]
 ```powershell
 venv\Scripts\python.exe -m ruff check src tests tools
 venv\Scripts\python.exe -m mypy src
-venv\Scripts\python.exe -m pytest tests\unit\test_foundational_components.py tests\contract\test_session_lifecycle_cli.py tests\integration\test_iteration_loop.py tests\e2e\test_interrupt_best_candidate.py -q -p no:cacheprovider -p no:tmpdir
+venv\Scripts\python.exe -m pytest tests\unit tests\contract tests\integration tests\e2e -q -p no:cacheprovider -p no:tmpdir
 venv\Scripts\python.exe tools\quality\validate_contracts.py
 venv\Scripts\python.exe tools\quality\check_headers.py src\rewardlab tests tools
 ```

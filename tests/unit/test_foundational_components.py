@@ -11,12 +11,19 @@ from pathlib import Path
 
 import pytest
 
+from rewardlab.experiments.robustness_runner import RobustnessRunner
 from rewardlab.orchestrator.state_machine import (
     SessionLifecycleState,
     can_transition,
     ensure_transition,
 )
 from rewardlab.persistence.session_repository import SessionRepository
+from rewardlab.schemas.experiment_run import (
+    ExperimentRun,
+    ExperimentRunStatus,
+    ExperimentRunType,
+)
+from rewardlab.schemas.robustness_assessment import RobustnessAssessment
 from rewardlab.schemas.session_config import EnvironmentBackend, FeedbackGate, SessionConfig
 from rewardlab.schemas.session_report import (
     BestCandidateReport,
@@ -104,6 +111,69 @@ def test_session_report_accepts_valid_payload() -> None:
         ],
     )
     assert report.best_candidate.candidate_id == "cand-1"
+
+
+def test_experiment_run_rejects_default_robustness_variant() -> None:
+    """
+    Validate robustness runs require a non-default variant label.
+    """
+    with pytest.raises(ValueError):
+        ExperimentRun(
+            run_id="run-1",
+            candidate_id="cand-1",
+            run_type=ExperimentRunType.ROBUSTNESS,
+            variant_label="default",
+            seed=7,
+            status=ExperimentRunStatus.COMPLETED,
+            metrics={"score": 0.7},
+            started_at="2026-04-02T00:00:00+00:00",
+            ended_at="2026-04-02T00:00:01+00:00",
+        )
+
+
+def test_robustness_assessment_summary_line_includes_risk_and_ratio() -> None:
+    """
+    Validate robustness assessment exposes a concise report summary.
+    """
+    assessment = RobustnessAssessment(
+        assessment_id="assess-1",
+        candidate_id="cand-1",
+        variant_count=3,
+        degradation_ratio=0.182,
+        risk_level=RiskLevel.MEDIUM,
+        risk_notes="Moderate degradation detected.",
+        created_at="2026-04-02T00:00:00+00:00",
+    )
+    assert assessment.summary_line() == "medium risk across 3 variants (degradation=0.182)"
+
+
+def test_robustness_runner_accepts_yaml_probe_matrix() -> None:
+    """
+    Validate the probe matrix loader accepts repository-style YAML syntax.
+    """
+    matrix_path = Path(".tmp-probe-matrix.yaml")
+    matrix_path.write_text(
+        "\n".join(
+            [
+                "# comment should be ignored",
+                "gymnasium:",
+                "  - variant_label: observation_dropout",
+                "    seed: 11",
+                "    overrides:",
+                "      dropout_rate: 0.2",
+                "isaacgym:",
+                "  - variant_label: dynamics_shift",
+                "    seed: 19",
+                "    overrides:",
+                "      friction_scale: 1.15",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    runner = RobustnessRunner(probe_matrix_path=matrix_path)
+    assert runner._variants_for_backend("gymnasium")[0].variant_label == "observation_dropout"  # noqa: SLF001
+    assert runner._variants_for_backend("isaacgym")[0].overrides == {"friction_scale": 1.15}  # noqa: SLF001
+    matrix_path.unlink(missing_ok=True)
 
 
 def test_retry_returns_on_eventual_success() -> None:

@@ -3,10 +3,9 @@
 ## 0. Current Implementation Scope (2026-04-02)
 
 - Implemented and verified: setup + foundational infrastructure + US1 iterative
-  session lifecycle (`start`, `step`, `pause`, `resume`, `stop`, `report`)
-- Not implemented yet: US2 robustness/reward-hacking workflow and US3 feedback
-  channels
-- Phase 4 execution guide: `specs/001-iterative-reward-design/phase4-handoff.md`
+  session lifecycle + US2 robustness and reward-hacking detection
+- Not implemented yet: US3 feedback channels
+- Phase 5 execution guide: `specs/001-iterative-reward-design/phase5-handoff.md`
 
 ## 1. Prerequisites
 
@@ -33,6 +32,7 @@ venv\Scripts\python.exe -m mypy src
 
 ```powershell
 venv\Scripts\python.exe -m pytest tests/contract/test_session_lifecycle_cli.py -q
+venv\Scripts\python.exe -m pytest tests/contract/test_backend_adapters.py -q
 venv\Scripts\python.exe -m pytest tests/unit/test_foundational_components.py -q
 venv\Scripts\python.exe tools/quality/validate_contracts.py
 ```
@@ -41,15 +41,21 @@ Expected result:
 - CLI contracts and JSON schemas parse successfully.
 - Invalid session configs are rejected by schema validation tests.
 
-## 4. Run Deterministic Fixture Experiments
+## 4. Run Deterministic Fixture Experiments and Robustness Checks
 
 ```powershell
+venv\Scripts\python.exe -m pytest tests/integration/test_backend_selection.py -q
+venv\Scripts\python.exe -m pytest tests/integration/test_reward_hack_probes.py -q
 venv\Scripts\python.exe -m pytest tests/integration/test_iteration_loop.py -q
 venv\Scripts\python.exe -m pytest tests/e2e/test_interrupt_best_candidate.py -q
 ```
 
 Expected result:
 - Iterative loop advances candidate versions and records reflections.
+- Each `session step` routes through the configured backend adapter and executes
+  robustness probes from `tools/reward_hack_probes/probe_matrix.yaml`.
+- Reports include per-iteration risk levels and selection rationale when a
+  minor robustness risk is accepted.
 - Interrupt flow exports best-known candidate evidence to a report artifact.
 
 ## 5. Start a Session Manually
@@ -66,12 +72,12 @@ rewardlab session start \
   --json
 ```
 
-Isaac Gym variant:
+Isaac Gym variant using caller-provided files:
 
 ```powershell
 rewardlab session start \
-  --objective-file tools/fixtures/objectives/isaac_ant.txt \
-  --baseline-reward-file tools/fixtures/rewards/isaac_ant_baseline.py \
+  --objective-file <path-to-isaac-objective-file> \
+  --baseline-reward-file <path-to-isaac-baseline-file> \
   --environment-id isaac-ant-v0 \
   --environment-backend isaacgym \
   --no-improve-limit 3 \
@@ -80,10 +86,19 @@ rewardlab session start \
   --json
 ```
 
+The repository only ships CartPole fixtures by default; provide Isaac-specific
+objective and baseline files when exercising the Isaac Gym path manually.
+
 Then run one step:
 
 ```powershell
 rewardlab session step --session-id <SESSION_ID> --json
+```
+
+Then export the current report:
+
+```powershell
+rewardlab session report --session-id <SESSION_ID> --json
 ```
 
 ## 6. Validate Pause/Resume and Interrupt Recovery
@@ -96,6 +111,7 @@ rewardlab session stop --session-id <SESSION_ID> --json
 
 Expected result:
 - Best-known candidate and evidence are preserved on stop.
+- Report exports include robustness risk summaries for each completed candidate.
 - Paused sessions resume without losing iteration history.
 
 ## 7. Quality Feedback Loop Before Merge
@@ -114,15 +130,15 @@ Mandatory review checks:
 - Function/method headers cover all non-trivial routines.
 - Dead code cleanup pass completed and verified in code review.
 
-## 8. Phase 4 Development Bootstrap
+## 8. Phase 5 Development Bootstrap
 
-Run the complete, minimal baseline before starting US2 work:
+Run the complete, minimal baseline before starting US3 work:
 
 ```powershell
 venv\Scripts\python.exe -m ruff check src tests tools
 venv\Scripts\python.exe -m mypy src
-venv\Scripts\python.exe -m pytest tests/unit/test_foundational_components.py tests/contract/test_session_lifecycle_cli.py tests/integration/test_iteration_loop.py tests/e2e/test_interrupt_best_candidate.py -q -p no:cacheprovider -p no:tmpdir
+venv\Scripts\python.exe -m pytest tests/unit/test_foundational_components.py tests/contract/test_session_lifecycle_cli.py tests/contract/test_backend_adapters.py tests/integration/test_backend_selection.py tests/integration/test_reward_hack_probes.py tests/integration/test_iteration_loop.py tests/e2e/test_interrupt_best_candidate.py -q -p no:cacheprovider -p no:tmpdir
 ```
 
-Then execute the dependency-ordered Phase 4 chunks in:
-`specs/001-iterative-reward-design/phase4-handoff.md`.
+Then execute the dependency-ordered Phase 5 chunks in:
+`specs/001-iterative-reward-design/phase5-handoff.md`.

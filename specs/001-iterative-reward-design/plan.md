@@ -13,10 +13,10 @@ phase can be validated independently before full-session runs.
 
 ## Current Delivery Status (2026-04-02)
 
-- Completed implementation phases: 1, 2, and 3 (tasks `T001`-`T032`)
-- Current implementation branch: `001-iterative-reward-design-impl-p1-p3`
-- Next implementation target: Phase 4 / US2 (`T033`-`T045`)
-- Detailed handoff for next thread: `/specs/001-iterative-reward-design/phase4-handoff.md`
+- Completed implementation phases: 1, 2, 3, and 4 (tasks `T001`-`T045`)
+- Current implementation branch: `001-iterative-reward-design-impl-p4`
+- Next implementation target: Phase 5 / US3 (`T046`-`T057`)
+- Detailed handoff for next thread: `/specs/001-iterative-reward-design/phase5-handoff.md`
 
 ## Technical Context
 
@@ -53,6 +53,7 @@ specs/001-iterative-reward-design/
 |-- data-model.md
 |-- quickstart.md
 |-- phase4-handoff.md
+|-- phase5-handoff.md
 |-- contracts/
 |   |-- orchestrator-cli.md
 |   |-- session-config.schema.json

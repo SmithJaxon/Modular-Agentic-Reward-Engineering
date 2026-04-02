@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from rewardlab.schemas.robustness_assessment import RiskLevel
+
 
 @dataclass(slots=True, frozen=True)
 class CandidateSignal:
@@ -20,6 +22,8 @@ class CandidateSignal:
     robustness_bonus: float = 0.0
     human_feedback_bonus: float = 0.0
     peer_feedback_bonus: float = 0.0
+    risk_level: RiskLevel = RiskLevel.LOW
+    tradeoff_rationale: str | None = None
 
     @property
     def aggregate_score(self) -> float:
@@ -32,6 +36,23 @@ class CandidateSignal:
             + self.human_feedback_bonus
             + self.peer_feedback_bonus
         )
+
+    @property
+    def minor_robustness_risk_accepted(self) -> bool:
+        """
+        Report whether the signal represents an accepted minor robustness tradeoff.
+        """
+        return self.risk_level is RiskLevel.MEDIUM and self.tradeoff_rationale is not None
+
+
+@dataclass(slots=True, frozen=True)
+class SelectionOutcome:
+    """
+    Represent the policy decision for the currently best candidate.
+    """
+
+    selected_signal: CandidateSignal
+    selection_summary: str
 
 
 def choose_best_signal(candidates: list[CandidateSignal]) -> CandidateSignal:
@@ -50,3 +71,26 @@ def choose_best_signal(candidates: list[CandidateSignal]) -> CandidateSignal:
     if not candidates:
         raise ValueError("cannot choose best candidate from empty list")
     return max(candidates, key=lambda candidate: candidate.aggregate_score)
+
+
+def select_candidate(candidates: list[CandidateSignal]) -> SelectionOutcome:
+    """
+    Choose the current best candidate and capture an auditable selection summary.
+
+    Args:
+        candidates: Candidate signal values.
+
+    Returns:
+        Policy outcome containing the selected signal and rationale summary.
+    """
+    best = choose_best_signal(candidates)
+    summary = (
+        f"Selected candidate {best.candidate_id} with aggregate score "
+        f"{best.aggregate_score:.3f} from primary performance {best.primary_performance:.3f} "
+        f"and robustness bonus {best.robustness_bonus:+.3f}."
+    )
+    if best.minor_robustness_risk_accepted:
+        summary = f"{summary} Minor robustness risk accepted: {best.tradeoff_rationale}"
+    elif best.risk_level is RiskLevel.HIGH:
+        summary = f"{summary} High robustness risk remained visible during selection."
+    return SelectionOutcome(selected_signal=best, selection_summary=summary)

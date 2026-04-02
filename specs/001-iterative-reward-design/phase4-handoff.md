@@ -1,8 +1,9 @@
 # Phase 4 Handoff: Reward Hacking and Overfitting Detection
 
+**Status**: Completed on 2026-04-02 and superseded by `specs/001-iterative-reward-design/phase5-handoff.md`  
 **Prepared**: 2026-04-02  
 **Feature**: `001-iterative-reward-design`  
-**Current implementation branch**: `001-iterative-reward-design-impl-p1-p3`  
+**Prepared from implementation branch**: `001-iterative-reward-design-impl-p1-p3`  
 **Target integration branch for next work**: `iterative-main`
 
 ## 1. Scope for the Next Thread
