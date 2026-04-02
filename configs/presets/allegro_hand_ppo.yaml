@@ -1,0 +1,8 @@
+name: allegro_hand_ppo_baseline
+environment: AllegroHand
+baseline: PPO
+seed: 13
+notes: Baseline preset for Allegro Hand Phase 1 scaffold
+extra:
+  source: baseline_registry
+

@@ -1,0 +1,32 @@
+{
+  "artifacts": [
+    {
+      "name": "manifest",
+      "path": "/Users/isabella/MARE/Modular-Agentic-Reward-Engineering/runs/cartpole_baseline_dry_run/manifest.json"
+    },
+    {
+      "name": "result",
+      "path": "/Users/isabella/MARE/Modular-Agentic-Reward-Engineering/runs/cartpole_baseline_dry_run/result.json"
+    }
+  ],
+  "manifest": {
+    "baseline": "PPO",
+    "created_at": "2026-04-02T21:35:03.013897+00:00",
+    "environment": "CartPole",
+    "extra": {
+      "evaluation_mode": "dry_run"
+    },
+    "name": "cartpole_baseline_dry_run",
+    "notes": "Phase 1 scaffold example configuration",
+    "seed": 7
+  },
+  "metrics": {
+    "evaluation_score": 0.2267058593810488,
+    "seed": 7.0
+  },
+  "notes": null,
+  "status": "evaluated_placeholder",
+  "warnings": [
+    "IsaacGym adapter not yet implemented"
+  ]
+}

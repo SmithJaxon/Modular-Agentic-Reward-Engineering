@@ -1,0 +1,11 @@
+{
+  "baseline": "PPO",
+  "created_at": "2026-04-02T21:27:38.899148+00:00",
+  "environment": "Humanoid",
+  "extra": {
+    "source": "baseline_registry"
+  },
+  "name": "humanoid_ppo_baseline",
+  "notes": "Baseline preset for Humanoid Phase 1 scaffold",
+  "seed": 11
+}

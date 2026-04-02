@@ -1,0 +1,8 @@
+name: cartpole_ppo_baseline
+environment: CartPole
+baseline: PPO
+seed: 7
+notes: Baseline preset for CartPole Phase 1 scaffold
+extra:
+  source: baseline_registry
+

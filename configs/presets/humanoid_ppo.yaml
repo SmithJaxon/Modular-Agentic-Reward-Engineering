@@ -1,0 +1,8 @@
+name: humanoid_ppo_baseline
+environment: Humanoid
+baseline: PPO
+seed: 11
+notes: Baseline preset for Humanoid Phase 1 scaffold
+extra:
+  source: baseline_registry
+

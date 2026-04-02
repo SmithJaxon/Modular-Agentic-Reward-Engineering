@@ -1,0 +1,8 @@
+name: cartpole_baseline_dry_run
+environment: CartPole
+baseline: PPO
+seed: 7
+notes: Phase 1 scaffold example configuration
+extra:
+  evaluation_mode: dry_run
+
