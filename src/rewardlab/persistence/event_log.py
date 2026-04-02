@@ -104,4 +104,7 @@ class EventLog:
         path = self._checkpoint_dir / f"{session_id}.json"
         if not path.exists():
             return None
-        return json.loads(path.read_text(encoding="utf-8"))
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(raw, dict):
+            raise ValueError(f"invalid checkpoint payload in {path}")
+        return raw

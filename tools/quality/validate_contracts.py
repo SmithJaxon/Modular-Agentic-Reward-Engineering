@@ -25,7 +25,7 @@ def _load_json(path: Path) -> dict:
         ValueError: If JSON cannot be parsed.
     """
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        return json.loads(path.read_text(encoding="utf-8-sig"))
     except json.JSONDecodeError as exc:
         raise ValueError(f"Invalid JSON in {path}: {exc}") from exc
 

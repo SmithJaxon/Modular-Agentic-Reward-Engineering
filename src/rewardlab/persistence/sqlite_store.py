@@ -160,8 +160,14 @@ class SQLiteStore:
         """
         if not values:
             return
-        assignments = ", ".join(f"{key} = ?" for key in values)
-        args = list(values.values()) + [session_id]
+        normalized = dict(values)
+        if "metadata" in normalized:
+            normalized["metadata_json"] = json.dumps(
+                normalized.pop("metadata"),
+                separators=(",", ":"),
+            )
+        assignments = ", ".join(f"{key} = ?" for key in normalized)
+        args = list(normalized.values()) + [session_id]
         with self._connection() as conn:
             conn.execute(f"UPDATE sessions SET {assignments} WHERE session_id = ?", args)
 
