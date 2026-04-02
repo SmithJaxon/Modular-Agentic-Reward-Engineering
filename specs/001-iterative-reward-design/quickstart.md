@@ -1,4 +1,12 @@
-﻿# Quickstart: LLM-Guided Reward Function Iteration
+# Quickstart: LLM-Guided Reward Function Iteration
+
+## 0. Current Implementation Scope (2026-04-02)
+
+- Implemented and verified: setup + foundational infrastructure + US1 iterative
+  session lifecycle (`start`, `step`, `pause`, `resume`, `stop`, `report`)
+- Not implemented yet: US2 robustness/reward-hacking workflow and US3 feedback
+  channels
+- Phase 4 execution guide: `specs/001-iterative-reward-design/phase4-handoff.md`
 
 ## 1. Prerequisites
 
@@ -16,18 +24,17 @@ $env:OPENAI_API_KEY="<your-api-key>"
 ## 2. Install and Validate Tooling
 
 ```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -e .[dev]
-ruff check .
-mypy src
+venv\Scripts\python.exe -m pip install -e .[dev]
+venv\Scripts\python.exe -m ruff check src tests tools
+venv\Scripts\python.exe -m mypy src
 ```
 
 ## 3. Run Contract and Schema Verification
 
 ```powershell
-python -m pytest tests/contract -q
-python -m pytest tests/unit/test_schema_contracts.py -q
+venv\Scripts\python.exe -m pytest tests/contract/test_session_lifecycle_cli.py -q
+venv\Scripts\python.exe -m pytest tests/unit/test_foundational_components.py -q
+venv\Scripts\python.exe tools/quality/validate_contracts.py
 ```
 
 Expected result:
@@ -37,13 +44,13 @@ Expected result:
 ## 4. Run Deterministic Fixture Experiments
 
 ```powershell
-python -m pytest tests/integration/test_iteration_loop.py -q
-python -m pytest tests/integration/test_reward_hack_probes.py -q
+venv\Scripts\python.exe -m pytest tests/integration/test_iteration_loop.py -q
+venv\Scripts\python.exe -m pytest tests/e2e/test_interrupt_best_candidate.py -q
 ```
 
 Expected result:
 - Iterative loop advances candidate versions and records reflections.
-- Robustness probes detect intentionally exploit-prone rewards.
+- Interrupt flow exports best-known candidate evidence to a report artifact.
 
 ## 5. Start a Session Manually
 
@@ -96,13 +103,26 @@ Expected result:
 Run full verification:
 
 ```powershell
-ruff check .
-mypy src
-python -m pytest tests/unit tests/contract tests/integration tests/e2e -q
-python -m pytest tests/e2e/test_interrupt_best_candidate.py -q
+venv\Scripts\python.exe -m ruff check src tests tools
+venv\Scripts\python.exe -m mypy src
+venv\Scripts\python.exe -m pytest tests/unit tests/contract tests/integration tests/e2e -q -p no:cacheprovider -p no:tmpdir
+venv\Scripts\python.exe tools/quality/check_headers.py src/rewardlab tests tools
 ```
 
 Mandatory review checks:
 - File headers are present and updated in touched Python files.
 - Function/method headers cover all non-trivial routines.
 - Dead code cleanup pass completed and verified in code review.
+
+## 8. Phase 4 Development Bootstrap
+
+Run the complete, minimal baseline before starting US2 work:
+
+```powershell
+venv\Scripts\python.exe -m ruff check src tests tools
+venv\Scripts\python.exe -m mypy src
+venv\Scripts\python.exe -m pytest tests/unit/test_foundational_components.py tests/contract/test_session_lifecycle_cli.py tests/integration/test_iteration_loop.py tests/e2e/test_interrupt_best_candidate.py -q -p no:cacheprovider -p no:tmpdir
+```
+
+Then execute the dependency-ordered Phase 4 chunks in:
+`specs/001-iterative-reward-design/phase4-handoff.md`.

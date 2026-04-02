@@ -27,18 +27,24 @@ headers, function/method headers, and dead-code cleanup.
 - Tooling: `tools/quality/`, `tools/fixtures/`, `tools/reward_hack_probes/`
 - Feature docs: `specs/001-iterative-reward-design/`
 
+## Current Progress Snapshot (2026-04-02)
+
+- Completed and committed: `T001`-`T032`
+- Phase 4 status: not started
+- Handoff plan for next thread: `specs/001-iterative-reward-design/phase4-handoff.md`
+
 ## Phase 1: Setup (Shared Infrastructure)
 
 **Purpose**: Initialize project skeleton, quality tooling, and repeatable local verification.
 
-- [ ] T001 Create package scaffolding and module init files in `src/rewardlab/__init__.py`, `src/rewardlab/cli/__init__.py`, `src/rewardlab/orchestrator/__init__.py`, `src/rewardlab/llm/__init__.py`, `src/rewardlab/experiments/__init__.py`, `src/rewardlab/experiments/backends/__init__.py`, `src/rewardlab/feedback/__init__.py`, `src/rewardlab/selection/__init__.py`, `src/rewardlab/persistence/__init__.py`, `src/rewardlab/schemas/__init__.py`, and `src/rewardlab/utils/__init__.py`
-- [ ] T002 Initialize dependency and project metadata in `pyproject.toml`
-- [ ] T003 Configure linting, formatting, typing, and pytest tooling in `pyproject.toml`
-- [ ] T004 [P] Configure test discovery and markers in `pytest.ini`
-- [ ] T005 [P] Add runtime environment variable template in `.env.example`
-- [ ] T006 [P] Implement contract/schema validation utility in `tools/quality/validate_contracts.py`
-- [ ] T007 [P] Implement file-header and docstring audit utility in `tools/quality/check_headers.py`
-- [ ] T008 [P] Create deterministic objective and reward fixture seeds in `tools/fixtures/objectives/cartpole.txt` and `tools/fixtures/rewards/cartpole_baseline.py`
+- [X] T001 Create package scaffolding and module init files in `src/rewardlab/__init__.py`, `src/rewardlab/cli/__init__.py`, `src/rewardlab/orchestrator/__init__.py`, `src/rewardlab/llm/__init__.py`, `src/rewardlab/experiments/__init__.py`, `src/rewardlab/experiments/backends/__init__.py`, `src/rewardlab/feedback/__init__.py`, `src/rewardlab/selection/__init__.py`, `src/rewardlab/persistence/__init__.py`, `src/rewardlab/schemas/__init__.py`, and `src/rewardlab/utils/__init__.py`
+- [X] T002 Initialize dependency and project metadata in `pyproject.toml`
+- [X] T003 Configure linting, formatting, typing, and pytest tooling in `pyproject.toml`
+- [X] T004 [P] Configure test discovery and markers in `pytest.ini`
+- [X] T005 [P] Add runtime environment variable template in `.env.example`
+- [X] T006 [P] Implement contract/schema validation utility in `tools/quality/validate_contracts.py`
+- [X] T007 [P] Implement file-header and docstring audit utility in `tools/quality/check_headers.py`
+- [X] T008 [P] Create deterministic objective and reward fixture seeds in `tools/fixtures/objectives/cartpole.txt` and `tools/fixtures/rewards/cartpole_baseline.py`
 
 ---
 
@@ -48,16 +54,16 @@ headers, function/method headers, and dead-code cleanup.
 
 **CRITICAL**: No user story work can begin until this phase is complete.
 
-- [ ] T009 Implement session config validation model in `src/rewardlab/schemas/session_config.py`
-- [ ] T010 [P] Implement session report validation model in `src/rewardlab/schemas/session_report.py`
-- [ ] T011 Implement SQLite metadata store in `src/rewardlab/persistence/sqlite_store.py`
-- [ ] T012 [P] Implement append-only JSONL event logger in `src/rewardlab/persistence/event_log.py`
-- [ ] T013 Implement session repository facade in `src/rewardlab/persistence/session_repository.py`
-- [ ] T014 [P] Implement bounded retry and backoff utilities in `src/rewardlab/utils/retry.py`
-- [ ] T015 Implement orchestrator state machine transitions in `src/rewardlab/orchestrator/state_machine.py`
-- [ ] T016 [P] Implement backend adapter interface in `src/rewardlab/experiments/backends/base.py`
-- [ ] T017 [P] Implement OpenAI API client wrapper with env-var credentials in `src/rewardlab/llm/openai_client.py`
-- [ ] T018 Implement foundational unit tests for schemas, retry logic, and state transitions in `tests/unit/test_foundational_components.py`
+- [X] T009 Implement session config validation model in `src/rewardlab/schemas/session_config.py`
+- [X] T010 [P] Implement session report validation model in `src/rewardlab/schemas/session_report.py`
+- [X] T011 Implement SQLite metadata store in `src/rewardlab/persistence/sqlite_store.py`
+- [X] T012 [P] Implement append-only JSONL event logger in `src/rewardlab/persistence/event_log.py`
+- [X] T013 Implement session repository facade in `src/rewardlab/persistence/session_repository.py`
+- [X] T014 [P] Implement bounded retry and backoff utilities in `src/rewardlab/utils/retry.py`
+- [X] T015 Implement orchestrator state machine transitions in `src/rewardlab/orchestrator/state_machine.py`
+- [X] T016 [P] Implement backend adapter interface in `src/rewardlab/experiments/backends/base.py`
+- [X] T017 [P] Implement OpenAI API client wrapper with env-var credentials in `src/rewardlab/llm/openai_client.py`
+- [X] T018 Implement foundational unit tests for schemas, retry logic, and state transitions in `tests/unit/test_foundational_components.py`
 
 **Checkpoint**: Foundation ready; user stories can now be implemented.
 
@@ -71,23 +77,23 @@ headers, function/method headers, and dead-code cleanup.
 
 ### Tests for User Story 1
 
-- [ ] T019 [P] [US1] Add CLI contract tests for `session start`, `session step`, and `session stop` in `tests/contract/test_session_lifecycle_cli.py`
-- [ ] T020 [P] [US1] Add integration test for iterative evaluate-reflect-revise ranking loop in `tests/integration/test_iteration_loop.py`
-- [ ] T021 [P] [US1] Add end-to-end interruption and best-candidate export test in `tests/e2e/test_interrupt_best_candidate.py`
+- [X] T019 [P] [US1] Add CLI contract tests for `session start`, `session step`, and `session stop` in `tests/contract/test_session_lifecycle_cli.py`
+- [X] T020 [P] [US1] Add integration test for iterative evaluate-reflect-revise ranking loop in `tests/integration/test_iteration_loop.py`
+- [X] T021 [P] [US1] Add end-to-end interruption and best-candidate export test in `tests/e2e/test_interrupt_best_candidate.py`
 
 ### Implementation for User Story 1
 
-- [ ] T022 [P] [US1] Implement reward candidate schema and mapping in `src/rewardlab/schemas/reward_candidate.py`
-- [ ] T023 [P] [US1] Implement reflection record schema and mapping in `src/rewardlab/schemas/reflection_record.py`
-- [ ] T024 [US1] Implement session lifecycle service in `src/rewardlab/orchestrator/session_service.py`
-- [ ] T025 [US1] Implement iteration engine (evaluate -> reflect -> revise) in `src/rewardlab/orchestrator/iteration_engine.py`
-- [ ] T026 [US1] Implement baseline multi-signal selection policy in `src/rewardlab/selection/policy.py`
-- [ ] T027 [US1] Implement session CLI command handlers in `src/rewardlab/cli/session_commands.py`
-- [ ] T028 [US1] Implement CLI app bootstrap and JSON response wiring in `src/rewardlab/cli/app.py`
-- [ ] T029 [US1] Implement checkpoint and resume flow in `src/rewardlab/orchestrator/checkpointing.py`
-- [ ] T030 [US1] Implement best-candidate report generation in `src/rewardlab/orchestrator/reporting.py`
-- [ ] T031 [US1] Wire per-iteration event emission and persisted evidence hooks in `src/rewardlab/persistence/event_log.py`
-- [ ] T032 [US1] Add required file headers and function/method docstrings in `src/rewardlab/orchestrator/session_service.py` and `src/rewardlab/orchestrator/iteration_engine.py`
+- [X] T022 [P] [US1] Implement reward candidate schema and mapping in `src/rewardlab/schemas/reward_candidate.py`
+- [X] T023 [P] [US1] Implement reflection record schema and mapping in `src/rewardlab/schemas/reflection_record.py`
+- [X] T024 [US1] Implement session lifecycle service in `src/rewardlab/orchestrator/session_service.py`
+- [X] T025 [US1] Implement iteration engine (evaluate -> reflect -> revise) in `src/rewardlab/orchestrator/iteration_engine.py`
+- [X] T026 [US1] Implement baseline multi-signal selection policy in `src/rewardlab/selection/policy.py`
+- [X] T027 [US1] Implement session CLI command handlers in `src/rewardlab/cli/session_commands.py`
+- [X] T028 [US1] Implement CLI app bootstrap and JSON response wiring in `src/rewardlab/cli/app.py`
+- [X] T029 [US1] Implement checkpoint and resume flow in `src/rewardlab/orchestrator/checkpointing.py`
+- [X] T030 [US1] Implement best-candidate report generation in `src/rewardlab/orchestrator/reporting.py`
+- [X] T031 [US1] Wire per-iteration event emission and persisted evidence hooks in `src/rewardlab/persistence/event_log.py`
+- [X] T032 [US1] Add required file headers and function/method docstrings in `src/rewardlab/orchestrator/session_service.py` and `src/rewardlab/orchestrator/iteration_engine.py`
 
 **Checkpoint**: User Story 1 is independently testable and can serve as MVP baseline.
 
@@ -119,6 +125,30 @@ headers, function/method headers, and dead-code cleanup.
 - [ ] T045 [US2] Add required file headers and function/method docstrings in `src/rewardlab/experiments/robustness_runner.py` and `src/rewardlab/selection/risk_analyzer.py`
 
 **Checkpoint**: Robustness and reward-hacking detection work across both backends.
+
+### Phase 4 Detailed Execution Chunks
+
+1. **Chunk A - lock contracts and routing tests**
+   Tasks: `T033`, `T035`
+   Verification gate:
+   `venv\Scripts\python.exe -m pytest tests/contract/test_backend_adapters.py tests/integration/test_backend_selection.py -q`
+2. **Chunk B - define experiment and robustness data models**
+   Tasks: `T039`, `T041`
+   Verification gate:
+   `venv\Scripts\python.exe -m pytest tests/unit/test_foundational_components.py -q`
+3. **Chunk C - implement adapters and backend factory**
+   Tasks: `T036`, `T037`, `T038`
+   Verification gate:
+   `venv\Scripts\python.exe -m pytest tests/contract/test_backend_adapters.py tests/integration/test_backend_selection.py -q`
+4. **Chunk D - implement probe matrix and robustness runner**
+   Tasks: `T043`, `T040`, `T034`
+   Verification gate:
+   `venv\Scripts\python.exe -m pytest tests/integration/test_reward_hack_probes.py -q`
+5. **Chunk E - risk analysis integration into policy**
+   Tasks: `T042`, `T044`, `T045`
+   Verification gate:
+   `venv\Scripts\python.exe -m pytest tests/integration/test_reward_hack_probes.py tests/integration/test_iteration_loop.py -q`
+   `venv\Scripts\python.exe tools/quality/check_headers.py src/rewardlab tests tools`
 
 ---
 

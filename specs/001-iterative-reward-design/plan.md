@@ -11,6 +11,13 @@ reflection, robustness testing, and optional human/peer feedback. The system is
 designed around small testable components and explicit verification loops so each
 phase can be validated independently before full-session runs.
 
+## Current Delivery Status (2026-04-02)
+
+- Completed implementation phases: 1, 2, and 3 (tasks `T001`-`T032`)
+- Current implementation branch: `001-iterative-reward-design-impl-p1-p3`
+- Next implementation target: Phase 4 / US2 (`T033`-`T045`)
+- Detailed handoff for next thread: `/specs/001-iterative-reward-design/phase4-handoff.md`
+
 ## Technical Context
 
 **Language/Version**: Python 3.12
@@ -45,6 +52,7 @@ specs/001-iterative-reward-design/
 |-- research.md
 |-- data-model.md
 |-- quickstart.md
+|-- phase4-handoff.md
 |-- contracts/
 |   |-- orchestrator-cli.md
 |   |-- session-config.schema.json
