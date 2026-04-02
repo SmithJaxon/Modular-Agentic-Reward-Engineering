@@ -72,8 +72,8 @@ class PeerFeedbackClient:
                         ),
                     ),
                 ),
+                reasoning_effort="minimal",
                 max_tokens=120,
-                temperature=0.2,
             )
         )
         return response.content.strip()

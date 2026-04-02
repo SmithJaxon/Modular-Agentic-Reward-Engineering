@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 
 class SupportsChatCompletions(Protocol):
@@ -61,6 +61,7 @@ class ChatCompletionRequest:
 
     model: str
     messages: tuple[ChatMessage, ...]
+    reasoning_effort: Literal["minimal", "low", "medium", "high"] | None = None
     temperature: float | None = None
     max_tokens: int | None = None
     response_format: dict[str, Any] | None = None
@@ -155,10 +156,12 @@ class OpenAIClient:
                 for message in request.messages
             ],
         }
+        if request.reasoning_effort is not None:
+            payload["reasoning_effort"] = request.reasoning_effort
         if request.temperature is not None:
             payload["temperature"] = request.temperature
         if request.max_tokens is not None:
-            payload["max_tokens"] = request.max_tokens
+            payload["max_completion_tokens"] = request.max_tokens
         if request.response_format is not None:
             payload["response_format"] = request.response_format
 

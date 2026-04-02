@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
+from rewardlab.feedback.peer_feedback_client import PeerFeedbackClient
 from rewardlab.llm.openai_client import (
     ChatCompletionRequest,
     ChatCompletionResponse,
@@ -250,12 +251,15 @@ def test_session_repository_round_trips_session_and_events(tmp_path) -> None:
 def test_openai_client_uses_injected_client_without_network() -> None:
     """The OpenAI wrapper should support fake injected clients for local tests."""
 
+    captured_payload: dict[str, object] = {}
+
     class FakeCompletions:
         """Minimal fake completions surface for the wrapper test."""
 
-        def create(self, **_: object) -> object:
+        def create(self, **kwargs: object) -> object:
             """Return a response object with the shape expected by the wrapper."""
 
+            captured_payload.update(kwargs)
             message = type("Message", (), {"content": "ok"})
             choice = type("Choice", (), {"message": message})
             return type("Response", (), {"choices": [choice]})()
@@ -277,8 +281,50 @@ def test_openai_client_uses_injected_client_without_network() -> None:
         ChatCompletionRequest(
             model="gpt-5-nano",
             messages=(ChatMessage(role="user", content="ping"),),
+            reasoning_effort="minimal",
+            max_tokens=12,
         )
     )
 
     assert isinstance(response, ChatCompletionResponse)
     assert response.content == "ok"
+    assert captured_payload["reasoning_effort"] == "minimal"
+    assert captured_payload["max_completion_tokens"] == 12
+    assert "max_tokens" not in captured_payload
+
+
+def test_peer_feedback_client_uses_gpt5_nano_without_temperature_override() -> None:
+    """The live peer-review request should remain compatible with GPT-5 nano."""
+
+    captured_request: ChatCompletionRequest | None = None
+
+    class FakeOpenAIClient:
+        """Minimal fake client for peer-feedback request inspection."""
+
+        has_credentials = True
+
+        def chat_completion(
+            self,
+            request: ChatCompletionRequest,
+        ) -> ChatCompletionResponse:
+            """Capture the outgoing request and return a stable response."""
+
+            nonlocal captured_request
+            captured_request = request
+            return ChatCompletionResponse(content="Concise live critique.", raw_response=None)
+
+    feedback = PeerFeedbackClient(FakeOpenAIClient()).request_feedback(
+        session_id="session-001",
+        candidate_id="candidate-001",
+        objective_text="Reward stable, centered balance.",
+        reward_definition="def reward(state): return 1.0",
+        aggregate_score=1.2,
+    )
+
+    assert captured_request is not None
+    assert captured_request.model == "gpt-5-nano"
+    assert captured_request.reasoning_effort == "minimal"
+    assert captured_request.max_tokens == 120
+    assert captured_request.temperature is None
+    assert feedback.comment == "Concise live critique."
+    assert feedback.score == 0.85
