@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import random
 
-from pathlib import Path
-
-from .contracts import EnvironmentAdapter, RunArtifact, RunReport
+from .contracts import RunReport
+from .environments import AllegroHandAdapter, CartPoleAdapter, HumanoidAdapter
 from .manifest import ExperimentManifest
 
 
@@ -44,5 +43,11 @@ class PlaceholderIsaacGymAdapter:
         return "status={0} score={1}".format(report.status, score)
 
 
-def is_environment_adapter(candidate: object) -> bool:
-    return isinstance(candidate, EnvironmentAdapter)
+def get_environment_adapter(environment_name: str):
+    if environment_name == "CartPole":
+        return CartPoleAdapter()
+    if environment_name == "Humanoid":
+        return HumanoidAdapter()
+    if environment_name == "AllegroHand":
+        return AllegroHandAdapter()
+    raise KeyError("Unknown environment name: {0}".format(environment_name))

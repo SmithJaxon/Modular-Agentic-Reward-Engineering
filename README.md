@@ -17,6 +17,8 @@ Research prototype for tool-based reward-function design in IsaacGym.
 - `PYTHON_VERSION_TARGET`
 - `ISAACGYM_HOME`
 
+See `.env.example` for a starter local environment file. Copy it to `.env` and fill in your values when ready.
+
 ## Layout
 
 - `configs/`
@@ -37,3 +39,4 @@ Commands:
 - `mare dry-run --config configs/example_experiment.yaml`
 - `mare list-presets`
 - `mare preset --name cartpole`
+- `mare script --config configs/example_experiment.yaml`

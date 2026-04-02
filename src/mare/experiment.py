@@ -3,11 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
-import random
 import json
 
-from .adapters import PlaceholderIsaacGymAdapter
+from .adapters import get_environment_adapter
 from .contracts import RunArtifact, RunReport
+from .execution import PPORunDispatcher, ExecutionReceipt
+from .launch import LaunchTarget, PPORunContract
 from .manifest import ExperimentManifest
 from .paths import ProjectPaths
 
@@ -48,27 +49,20 @@ class ExperimentRunner:
 
     def dry_run(self, manifest: ExperimentManifest) -> RunResult:
         """Placeholder run used until IsaacGym execution is wired in."""
-
-        random.seed(manifest.seed)
+        report = self.placeholder_report(manifest, self.paths.runs / manifest.name)
         return RunResult(
             manifest=manifest,
-            metrics={
-                "seed": float(manifest.seed),
-                "simulated_score": random.random(),
-            },
-            status="dry_run",
+            metrics=report.metrics,
+            status=report.status,
+            artifacts=[artifact.name for artifact in report.artifacts],
         )
 
     def placeholder_report(self, manifest: ExperimentManifest, run_dir: Path) -> RunReport:
-        adapter = PlaceholderIsaacGymAdapter()
+        adapter = get_environment_adapter(manifest.environment)
         report = adapter.evaluate(manifest)
         report_artifacts = list(report.artifacts)
-        report_artifacts.append(
-            RunArtifact(name="manifest", path=run_dir / "manifest.json")
-        )
-        report_artifacts.append(
-            RunArtifact(name="result", path=run_dir / "result.json")
-        )
+        report_artifacts.append(RunArtifact(name="manifest", path=run_dir / "manifest.json"))
+        report_artifacts.append(RunArtifact(name="result", path=run_dir / "result.json"))
         return RunReport(
             manifest=report.manifest,
             status=report.status,
@@ -77,3 +71,36 @@ class ExperimentRunner:
             artifacts=report_artifacts,
             notes=report.notes,
         )
+
+    def build_ppo_run_contract(
+        self,
+        manifest: ExperimentManifest,
+        run_dir: Path,
+        launch_target: LaunchTarget,
+    ) -> PPORunContract:
+        adapter = get_environment_adapter(manifest.environment)
+        return adapter.build_run_contract(
+            manifest=manifest,
+            run_dir=run_dir,
+            launch_target=launch_target,
+        )
+
+    def preview_ppo_launch(
+        self,
+        manifest: ExperimentManifest,
+        run_dir: Path,
+        launch_target: LaunchTarget,
+    ) -> ExecutionReceipt:
+        contract = self.build_ppo_run_contract(manifest, run_dir, launch_target)
+        dispatcher = PPORunDispatcher()
+        return dispatcher.preview(contract)
+
+    def write_ppo_launch_script(
+        self,
+        manifest: ExperimentManifest,
+        run_dir: Path,
+        launch_target: LaunchTarget,
+    ) -> ExecutionReceipt:
+        contract = self.build_ppo_run_contract(manifest, run_dir, launch_target)
+        dispatcher = PPORunDispatcher()
+        return dispatcher.render_script(contract, run_dir / "launch.sh")
