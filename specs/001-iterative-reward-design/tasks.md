@@ -27,6 +27,12 @@ headers, function/method headers, and dead-code cleanup.
 - Tooling: `tools/quality/`, `tools/fixtures/`, `tools/reward_hack_probes/`
 - Feature docs: `specs/001-iterative-reward-design/`
 
+## Current Progress Snapshot (2026-04-02)
+
+- Completed and committed: `T001`-`T032`
+- Phase 4 status: not started
+- Handoff plan for next thread: `specs/001-iterative-reward-design/phase4-handoff.md`
+
 ## Phase 1: Setup (Shared Infrastructure)
 
 **Purpose**: Initialize project skeleton, quality tooling, and repeatable local verification.
@@ -119,6 +125,30 @@ headers, function/method headers, and dead-code cleanup.
 - [ ] T045 [US2] Add required file headers and function/method docstrings in `src/rewardlab/experiments/robustness_runner.py` and `src/rewardlab/selection/risk_analyzer.py`
 
 **Checkpoint**: Robustness and reward-hacking detection work across both backends.
+
+### Phase 4 Detailed Execution Chunks
+
+1. **Chunk A - lock contracts and routing tests**
+   Tasks: `T033`, `T035`
+   Verification gate:
+   `venv\Scripts\python.exe -m pytest tests/contract/test_backend_adapters.py tests/integration/test_backend_selection.py -q`
+2. **Chunk B - define experiment and robustness data models**
+   Tasks: `T039`, `T041`
+   Verification gate:
+   `venv\Scripts\python.exe -m pytest tests/unit/test_foundational_components.py -q`
+3. **Chunk C - implement adapters and backend factory**
+   Tasks: `T036`, `T037`, `T038`
+   Verification gate:
+   `venv\Scripts\python.exe -m pytest tests/contract/test_backend_adapters.py tests/integration/test_backend_selection.py -q`
+4. **Chunk D - implement probe matrix and robustness runner**
+   Tasks: `T043`, `T040`, `T034`
+   Verification gate:
+   `venv\Scripts\python.exe -m pytest tests/integration/test_reward_hack_probes.py -q`
+5. **Chunk E - risk analysis integration into policy**
+   Tasks: `T042`, `T044`, `T045`
+   Verification gate:
+   `venv\Scripts\python.exe -m pytest tests/integration/test_reward_hack_probes.py tests/integration/test_iteration_loop.py -q`
+   `venv\Scripts\python.exe tools/quality/check_headers.py src/rewardlab tests tools`
 
 ---
 
