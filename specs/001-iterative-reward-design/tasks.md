@@ -71,23 +71,23 @@ headers, function/method headers, and dead-code cleanup.
 
 ### Tests for User Story 1
 
-- [ ] T019 [P] [US1] Add CLI contract tests for `session start`, `session step`, and `session stop` in `tests/contract/test_session_lifecycle_cli.py`
-- [ ] T020 [P] [US1] Add integration test for iterative evaluate-reflect-revise ranking loop in `tests/integration/test_iteration_loop.py`
-- [ ] T021 [P] [US1] Add end-to-end interruption and best-candidate export test in `tests/e2e/test_interrupt_best_candidate.py`
+- [x] T019 [P] [US1] Add CLI contract tests for `session start`, `session step`, and `session stop` in `tests/contract/test_session_lifecycle_cli.py`
+- [x] T020 [P] [US1] Add integration test for iterative evaluate-reflect-revise ranking loop in `tests/integration/test_iteration_loop.py`
+- [x] T021 [P] [US1] Add end-to-end interruption and best-candidate export test in `tests/e2e/test_interrupt_best_candidate.py`
 
 ### Implementation for User Story 1
 
-- [ ] T022 [P] [US1] Implement reward candidate schema and mapping in `src/rewardlab/schemas/reward_candidate.py`
-- [ ] T023 [P] [US1] Implement reflection record schema and mapping in `src/rewardlab/schemas/reflection_record.py`
-- [ ] T024 [US1] Implement session lifecycle service in `src/rewardlab/orchestrator/session_service.py`
-- [ ] T025 [US1] Implement iteration engine (evaluate -> reflect -> revise) in `src/rewardlab/orchestrator/iteration_engine.py`
-- [ ] T026 [US1] Implement baseline multi-signal selection policy in `src/rewardlab/selection/policy.py`
-- [ ] T027 [US1] Implement session CLI command handlers in `src/rewardlab/cli/session_commands.py`
-- [ ] T028 [US1] Implement CLI app bootstrap and JSON response wiring in `src/rewardlab/cli/app.py`
-- [ ] T029 [US1] Implement checkpoint and resume flow in `src/rewardlab/orchestrator/checkpointing.py`
-- [ ] T030 [US1] Implement best-candidate report generation in `src/rewardlab/orchestrator/reporting.py`
-- [ ] T031 [US1] Wire per-iteration event emission and persisted evidence hooks in `src/rewardlab/persistence/event_log.py`
-- [ ] T032 [US1] Add required file headers and function/method docstrings in `src/rewardlab/orchestrator/session_service.py` and `src/rewardlab/orchestrator/iteration_engine.py`
+- [x] T022 [P] [US1] Implement reward candidate schema and mapping in `src/rewardlab/schemas/reward_candidate.py`
+- [x] T023 [P] [US1] Implement reflection record schema and mapping in `src/rewardlab/schemas/reflection_record.py`
+- [x] T024 [US1] Implement session lifecycle service in `src/rewardlab/orchestrator/session_service.py`
+- [x] T025 [US1] Implement iteration engine (evaluate -> reflect -> revise) in `src/rewardlab/orchestrator/iteration_engine.py`
+- [x] T026 [US1] Implement baseline multi-signal selection policy in `src/rewardlab/selection/policy.py`
+- [x] T027 [US1] Implement session CLI command handlers in `src/rewardlab/cli/session_commands.py`
+- [x] T028 [US1] Implement CLI app bootstrap and JSON response wiring in `src/rewardlab/cli/app.py`
+- [x] T029 [US1] Implement checkpoint and resume flow in `src/rewardlab/orchestrator/checkpointing.py`
+- [x] T030 [US1] Implement best-candidate report generation in `src/rewardlab/orchestrator/reporting.py`
+- [x] T031 [US1] Wire per-iteration event emission and persisted evidence hooks in `src/rewardlab/persistence/event_log.py`
+- [x] T032 [US1] Add required file headers and function/method docstrings in `src/rewardlab/orchestrator/session_service.py` and `src/rewardlab/orchestrator/iteration_engine.py`
 
 **Checkpoint**: User Story 1 is independently testable and can serve as MVP baseline.
 

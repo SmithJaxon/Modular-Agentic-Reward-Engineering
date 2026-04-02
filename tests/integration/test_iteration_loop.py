@@ -1,0 +1,76 @@
+"""
+Summary: Integration test for the iterative evaluate-reflect-revise session loop.
+Created: 2026-04-02
+Last Updated: 2026-04-02
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from rewardlab.orchestrator.session_service import ServicePaths, SessionService
+from rewardlab.schemas.session_config import EnvironmentBackend, FeedbackGate
+
+
+def build_service(tmp_path: Path) -> SessionService:
+    """Create a fully local session service instance for integration tests."""
+
+    paths = ServicePaths(
+        data_dir=tmp_path / ".rewardlab",
+        database_path=tmp_path / ".rewardlab" / "metadata.sqlite3",
+        event_log_dir=tmp_path / ".rewardlab" / "events",
+        checkpoint_dir=tmp_path / ".rewardlab" / "checkpoints",
+        report_dir=tmp_path / ".rewardlab" / "reports",
+    )
+    service = SessionService(paths=paths)
+    service.initialize()
+    return service
+
+
+def create_input_files(tmp_path: Path) -> tuple[Path, Path]:
+    """Create deterministic objective and baseline reward fixtures for a session."""
+
+    objective_file = tmp_path / "objective.txt"
+    objective_file.write_text(
+        "Reward steady balance, centered cart motion, and low oscillation.",
+        encoding="utf-8",
+    )
+    baseline_reward_file = tmp_path / "baseline_reward.py"
+    baseline_reward_file.write_text(
+        "def reward(state):\n    return 1.0\n",
+        encoding="utf-8",
+    )
+    return objective_file, baseline_reward_file
+
+
+def test_iteration_loop_creates_candidates_reflections_and_events(tmp_path: Path) -> None:
+    """A session should advance multiple deterministic iterations and retain evidence."""
+
+    service = build_service(tmp_path)
+    objective_file, baseline_reward_file = create_input_files(tmp_path)
+    started = service.start_session(
+        objective_file=objective_file,
+        baseline_reward_file=baseline_reward_file,
+        environment_id="cartpole-v1",
+        environment_backend=EnvironmentBackend.GYMNASIUM,
+        no_improve_limit=3,
+        max_iterations=5,
+        feedback_gate=FeedbackGate.NONE,
+        session_id="session-loop",
+    )
+
+    step_one = service.step_session(started.session_id)
+    step_two = service.step_session(started.session_id)
+
+    candidates = service.list_candidates(started.session_id)
+    reflections = service.list_reflections(started.session_id)
+    events = service.read_events(started.session_id)
+
+    assert step_one.iteration_index == 1
+    assert step_two.iteration_index == 2
+    assert len(candidates) == 3
+    assert len(reflections) == 2
+    assert len(events) >= 5
+    assert candidates[-1].iteration_index == 2
+    assert started.session_id == step_two.session_id
+    assert step_two.best_candidate_id is not None

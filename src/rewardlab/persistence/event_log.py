@@ -145,6 +145,25 @@ class JsonlEventLog:
         )
         return self.append(record)
 
+    def append_session_event(
+        self,
+        session_id: str,
+        event_type: str,
+        payload: Mapping[str, Any],
+        *,
+        source: str | None = None,
+        sequence: int | None = None,
+    ) -> EventRecord:
+        """Append an event that is explicitly bound to a session identifier."""
+
+        return self.append_event(
+            event_type=event_type,
+            payload=payload,
+            source=source,
+            session_id=session_id,
+            sequence=sequence,
+        )
+
     def iter_records(self) -> Iterator[EventRecord]:
         """Yield records from the log in append order."""
 
@@ -172,6 +191,13 @@ class JsonlEventLog:
         """Load every record from the log into memory."""
 
         return list(self.iter_records())
+
+    def read_for_session(self, session_id: str) -> list[EventRecord]:
+        """Return only events associated with the provided session identifier."""
+
+        return [
+            record for record in self.iter_records() if record.session_id == session_id
+        ]
 
 def load_event_log(path: Path) -> JsonlEventLog:
     """Return a JSONL event log wrapper for the given path."""

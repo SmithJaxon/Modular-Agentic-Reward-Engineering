@@ -81,13 +81,11 @@ class SessionRepository:
     ) -> EventRecord:
         """Append an event to the JSONL log and return the persisted event."""
 
-        event = EventRecord(
+        return self.event_log.append_session_event(
             session_id=session_id,
             event_type=event_type,
             payload=payload,
         )
-        self.event_log.append(event)
-        return event
 
     def read_events(self, session_id: str | None = None) -> list[EventRecord]:
         """Read logged events, optionally filtered to a single session."""
@@ -95,4 +93,4 @@ class SessionRepository:
         events = self.event_log.read_all()
         if session_id is None:
             return events
-        return [event for event in events if event.session_id == session_id]
+        return self.event_log.read_for_session(session_id)
