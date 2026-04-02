@@ -1,0 +1,60 @@
+﻿{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rewardlab.local/contracts/session-report.schema.json",
+  "title": "SessionReport",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "session_id",
+    "status",
+    "stop_reason",
+    "environment_backend",
+    "best_candidate",
+    "iterations"
+  ],
+  "properties": {
+    "session_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "type": "string",
+      "enum": ["paused", "interrupted", "completed", "failed"]
+    },
+    "stop_reason": {
+      "type": "string",
+      "enum": ["user_interrupt", "convergence", "iteration_cap", "api_failure_pause", "error"]
+    },
+    "environment_backend": {
+      "type": "string",
+      "enum": ["gymnasium", "isaacgym"]
+    },
+    "best_candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["candidate_id", "aggregate_score", "selection_summary"],
+      "properties": {
+        "candidate_id": { "type": "string", "minLength": 1 },
+        "aggregate_score": { "type": "number" },
+        "selection_summary": { "type": "string", "minLength": 1 },
+        "minor_robustness_risk_accepted": { "type": "boolean" }
+      }
+    },
+    "iterations": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["iteration_index", "candidate_id", "performance_summary", "risk_level"],
+        "properties": {
+          "iteration_index": { "type": "integer", "minimum": 0 },
+          "candidate_id": { "type": "string", "minLength": 1 },
+          "performance_summary": { "type": "string", "minLength": 1 },
+          "risk_level": { "type": "string", "enum": ["low", "medium", "high"] },
+          "feedback_count": { "type": "integer", "minimum": 0 }
+        }
+      }
+    }
+  }
+}

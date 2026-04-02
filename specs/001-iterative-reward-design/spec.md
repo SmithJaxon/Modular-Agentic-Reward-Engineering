@@ -14,6 +14,7 @@
 - Q: Should final selection enforce a hard robustness gate? -> A: Use robustness-aware selection guidance with agent discretion, allowing minor robustness issues when performance gains are compelling and explicitly justified.
 - Q: Should human/peer feedback be mandatory before final recommendation? -> A: Feedback gating is a session parameter that can require none, one, or both feedback channels.
 - Q: How should model/API failures be handled during a session? -> A: Retry with bounded attempts and backoff; if retries fail, pause the session and preserve resumable state.
+- Q: Should the environment backend be fixed to one framework? -> A: Backend is a session input parameter and MUST support both Gymnasium and Isaac Gym.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -143,6 +144,9 @@ next candidate rationale.
 - **FR-018**: System MUST handle model/API failures using bounded retries with
   backoff; if retries are exhausted, the system MUST pause the session and
   persist resumable state without losing best-known candidate evidence.
+- **FR-019**: System MUST require an `environment_backend` session parameter with
+  supported values `gymnasium` and `isaacgym`, and MUST route experiment runs
+  through the selected backend adapter.
 
 ### Constitution Alignment Requirements
 

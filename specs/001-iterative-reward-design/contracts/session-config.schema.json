@@ -1,0 +1,45 @@
+﻿{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rewardlab.local/contracts/session-config.schema.json",
+  "title": "SessionConfig",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "objective_text",
+    "environment_id",
+    "environment_backend",
+    "no_improve_limit",
+    "max_iterations",
+    "feedback_gate"
+  ],
+  "properties": {
+    "objective_text": {
+      "type": "string",
+      "minLength": 1
+    },
+    "environment_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "environment_backend": {
+      "type": "string",
+      "enum": ["gymnasium", "isaacgym"]
+    },
+    "no_improve_limit": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "max_iterations": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "feedback_gate": {
+      "type": "string",
+      "enum": ["none", "one_required", "both_required"]
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": { "type": ["string", "number", "boolean"] }
+    }
+  }
+}
