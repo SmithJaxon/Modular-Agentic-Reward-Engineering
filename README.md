@@ -52,6 +52,10 @@ Commands:
 - `mare compare-report --trace runs/cartpole_baseline_dry_run/orchestration.json`
 - `mare review-brief --trace runs/cartpole_baseline_dry_run/orchestration.json`
 - `mare phase5-status --trace runs/cartpole_baseline_dry_run/orchestration.json`
+- `mare benchmark-compare --baseline-run-dir runs/cartpole_baseline_dry_run_base --candidate-run-dir runs/cartpole_baseline_dry_run_seed_shift --metric evaluation_score`
+- `mare benchmark-brief --baseline-run-dir runs/cartpole_baseline_dry_run_base --candidate-run-dir runs/cartpole_baseline_dry_run_seed_shift --metric evaluation_score`
+- `mare benchmark-aggregate --run-dir runs/cartpole_baseline_dry_run --run-dir runs/cartpole_baseline_dry_run_base --metric evaluation_score`
+- `mare benchmark-aggregate-brief --run-dir runs/cartpole_baseline_dry_run --run-dir runs/cartpole_baseline_dry_run_base --metric evaluation_score`
 - `mare orchestrate --config configs/example_experiment.yaml --reward-candidate reward_candidates/cartpole_reward.py`
 
 Reward candidates are Python modules with a required `compute_reward(observation, action, info)` function.

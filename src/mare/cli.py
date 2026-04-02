@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Iterable, Optional
 
 from .experiment import ExperimentRunner
+from .benchmark import BenchmarkReporter
 from .execution import PPORunDispatcher
 from .manifest import ExperimentManifest
 from .launch import LaunchTarget
@@ -180,6 +181,36 @@ def build_parser() -> argparse.ArgumentParser:
     )
     status_parser.add_argument("--trace", required=True, type=Path)
     status_parser.add_argument("--sweep-plan", type=Path, default=None)
+
+    benchmark_parser = subparsers.add_parser(
+        "benchmark-compare",
+        help="Compare two completed run directories and print a benchmark report",
+    )
+    benchmark_parser.add_argument("--baseline-run-dir", required=True, type=Path)
+    benchmark_parser.add_argument("--candidate-run-dir", required=True, type=Path)
+    benchmark_parser.add_argument("--metric", action="append", dest="metrics", default=None)
+
+    benchmark_brief_parser = subparsers.add_parser(
+        "benchmark-brief",
+        help="Print a human-readable benchmark brief",
+    )
+    benchmark_brief_parser.add_argument("--baseline-run-dir", required=True, type=Path)
+    benchmark_brief_parser.add_argument("--candidate-run-dir", required=True, type=Path)
+    benchmark_brief_parser.add_argument("--metric", action="append", dest="metrics", default=None)
+
+    benchmark_aggregate_parser = subparsers.add_parser(
+        "benchmark-aggregate",
+        help="Aggregate metrics across multiple completed run directories",
+    )
+    benchmark_aggregate_parser.add_argument("--run-dir", action="append", dest="run_dirs", required=True, type=Path)
+    benchmark_aggregate_parser.add_argument("--metric", action="append", dest="metrics", default=None)
+
+    benchmark_aggregate_brief_parser = subparsers.add_parser(
+        "benchmark-aggregate-brief",
+        help="Print a human-readable aggregate benchmark brief",
+    )
+    benchmark_aggregate_brief_parser.add_argument("--run-dir", action="append", dest="run_dirs", required=True, type=Path)
+    benchmark_aggregate_brief_parser.add_argument("--metric", action="append", dest="metrics", default=None)
 
     orchestrate_parser = subparsers.add_parser(
         "orchestrate",
@@ -551,6 +582,50 @@ def _phase5_status(trace: Path, sweep_plan: Optional[Path]) -> int:
     return 0
 
 
+def _benchmark_compare(
+    baseline_run_dir: Path,
+    candidate_run_dir: Path,
+    metrics: Optional[list[str]],
+) -> int:
+    reporter = BenchmarkReporter()
+    report = reporter.compare_runs(
+        baseline_run_dir=baseline_run_dir,
+        candidate_run_dir=candidate_run_dir,
+        metric_priority=metrics,
+    )
+    print(json.dumps(report.to_dict(), indent=2, sort_keys=True))
+    return 0
+
+
+def _benchmark_brief(
+    baseline_run_dir: Path,
+    candidate_run_dir: Path,
+    metrics: Optional[list[str]],
+) -> int:
+    reporter = BenchmarkReporter()
+    brief = reporter.build_brief(
+        baseline_run_dir=baseline_run_dir,
+        candidate_run_dir=candidate_run_dir,
+        metric_priority=metrics,
+    )
+    print(brief.to_text(), end="")
+    return 0
+
+
+def _benchmark_aggregate(run_dirs: list[Path], metrics: Optional[list[str]]) -> int:
+    reporter = BenchmarkReporter()
+    report = reporter.aggregate_runs(run_dirs, metric_priority=metrics)
+    print(json.dumps(report.to_dict(), indent=2, sort_keys=True))
+    return 0
+
+
+def _benchmark_aggregate_brief(run_dirs: list[Path], metrics: Optional[list[str]]) -> int:
+    reporter = BenchmarkReporter()
+    brief = reporter.build_aggregate_brief(run_dirs, metric_priority=metrics)
+    print(brief.to_text(), end="")
+    return 0
+
+
 def _orchestrate_run(
     config: Optional[Path],
     preset: Optional[str],
@@ -645,6 +720,14 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         return _review_brief(args.trace, args.sweep_plan)
     if args.command == "phase5-status":
         return _phase5_status(args.trace, args.sweep_plan)
+    if args.command == "benchmark-compare":
+        return _benchmark_compare(args.baseline_run_dir, args.candidate_run_dir, args.metrics)
+    if args.command == "benchmark-brief":
+        return _benchmark_brief(args.baseline_run_dir, args.candidate_run_dir, args.metrics)
+    if args.command == "benchmark-aggregate":
+        return _benchmark_aggregate(args.run_dirs, args.metrics)
+    if args.command == "benchmark-aggregate-brief":
+        return _benchmark_aggregate_brief(args.run_dirs, args.metrics)
     if args.command == "orchestrate":
         return _orchestrate_run(
             args.config,

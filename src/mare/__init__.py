@@ -2,6 +2,7 @@
 
 __all__ = [
     "config",
+    "benchmark",
     "reward_candidate",
     "reward_patch",
     "robustness",
