@@ -101,22 +101,22 @@ headers, function/method headers, and dead-code cleanup.
 
 ### Tests for User Story 2
 
-- [ ] T033 [P] [US2] Add backend adapter contract tests for Gymnasium and Isaac Gym in `tests/contract/test_backend_adapters.py`
-- [ ] T034 [P] [US2] Add integration tests for reward-hacking probe matrix in `tests/integration/test_reward_hack_probes.py`
-- [ ] T035 [P] [US2] Add integration test for `environment_backend` routing in `tests/integration/test_backend_selection.py`
+- [x] T033 [P] [US2] Add backend adapter contract tests for Gymnasium and Isaac Gym in `tests/contract/test_backend_adapters.py`
+- [x] T034 [P] [US2] Add integration tests for reward-hacking probe matrix in `tests/integration/test_reward_hack_probes.py`
+- [x] T035 [P] [US2] Add integration test for `environment_backend` routing in `tests/integration/test_backend_selection.py`
 
 ### Implementation for User Story 2
 
-- [ ] T036 [P] [US2] Implement Gymnasium backend adapter in `src/rewardlab/experiments/backends/gymnasium_backend.py`
-- [ ] T037 [P] [US2] Implement Isaac Gym backend adapter in `src/rewardlab/experiments/backends/isaacgym_backend.py`
-- [ ] T038 [US2] Implement backend adapter factory and resolver in `src/rewardlab/experiments/backends/factory.py`
-- [ ] T039 [P] [US2] Implement experiment run schema in `src/rewardlab/schemas/experiment_run.py`
-- [ ] T040 [US2] Implement robustness experiment runner with architecture/hyperparameter variants in `src/rewardlab/experiments/robustness_runner.py`
-- [ ] T041 [US2] Implement robustness assessment schema and risk summary logic in `src/rewardlab/schemas/robustness_assessment.py`
-- [ ] T042 [US2] Implement risk analyzer and tradeoff rationale capture in `src/rewardlab/selection/risk_analyzer.py`
-- [ ] T043 [US2] Create reward-hacking probe matrix configuration in `tools/reward_hack_probes/probe_matrix.yaml`
-- [ ] T044 [US2] Integrate robustness outputs into final candidate policy in `src/rewardlab/selection/policy.py`
-- [ ] T045 [US2] Add required file headers and function/method docstrings in `src/rewardlab/experiments/robustness_runner.py` and `src/rewardlab/selection/risk_analyzer.py`
+- [x] T036 [P] [US2] Implement Gymnasium backend adapter in `src/rewardlab/experiments/backends/gymnasium_backend.py`
+- [x] T037 [P] [US2] Implement Isaac Gym backend adapter in `src/rewardlab/experiments/backends/isaacgym_backend.py`
+- [x] T038 [US2] Implement backend adapter factory and resolver in `src/rewardlab/experiments/backends/factory.py`
+- [x] T039 [P] [US2] Implement experiment run schema in `src/rewardlab/schemas/experiment_run.py`
+- [x] T040 [US2] Implement robustness experiment runner with architecture/hyperparameter variants in `src/rewardlab/experiments/robustness_runner.py`
+- [x] T041 [US2] Implement robustness assessment schema and risk summary logic in `src/rewardlab/schemas/robustness_assessment.py`
+- [x] T042 [US2] Implement risk analyzer and tradeoff rationale capture in `src/rewardlab/selection/risk_analyzer.py`
+- [x] T043 [US2] Create reward-hacking probe matrix configuration in `tools/reward_hack_probes/probe_matrix.yaml`
+- [x] T044 [US2] Integrate robustness outputs into final candidate policy in `src/rewardlab/selection/policy.py`
+- [x] T045 [US2] Add required file headers and function/method docstrings in `src/rewardlab/experiments/robustness_runner.py` and `src/rewardlab/selection/risk_analyzer.py`
 
 **Checkpoint**: Robustness and reward-hacking detection work across both backends.
 

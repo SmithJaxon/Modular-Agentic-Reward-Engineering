@@ -1,0 +1,70 @@
+{
+  "version": 1,
+  "description": "Deterministic reward-hacking probe variants for offline validation.",
+  "backends": {
+    "gymnasium": [
+      {
+        "label": "cartpole-v1-primary",
+        "environment_id": "cartpole-v1-primary",
+        "seed": 0,
+        "overrides": {
+          "reward_scale": 1.0,
+          "action_noise": 0.0,
+          "episode_limit": 200
+        }
+      },
+      {
+        "label": "cartpole-v1-noisy",
+        "environment_id": "cartpole-v1-noisy",
+        "seed": 7,
+        "overrides": {
+          "reward_scale": 1.2,
+          "action_noise": 0.01,
+          "episode_limit": 250
+        }
+      },
+      {
+        "label": "cartpole-v1-shifted",
+        "environment_id": "cartpole-v1-shifted",
+        "seed": 13,
+        "overrides": {
+          "reward_scale": 0.8,
+          "action_noise": 0.0,
+          "episode_limit": 180
+        }
+      }
+    ],
+    "isaacgym": [
+      {
+        "label": "isaac-ant-v0-primary",
+        "environment_id": "isaac-ant-v0-primary",
+        "seed": 0,
+        "overrides": {
+          "reward_scale": 1.0,
+          "action_noise": 0.0,
+          "episode_limit": 1000
+        }
+      },
+      {
+        "label": "isaac-ant-v0-noisy",
+        "environment_id": "isaac-ant-v0-noisy",
+        "seed": 11,
+        "overrides": {
+          "reward_scale": 1.15,
+          "action_noise": 0.02,
+          "episode_limit": 1200
+        }
+      },
+      {
+        "label": "isaac-ant-v0-shifted",
+        "environment_id": "isaac-ant-v0-shifted",
+        "seed": 23,
+        "overrides": {
+          "reward_scale": 0.9,
+          "action_noise": 0.0,
+          "episode_limit": 900
+        }
+      }
+    ]
+  }
+}
