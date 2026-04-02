@@ -31,14 +31,14 @@ headers, function/method headers, and dead-code cleanup.
 
 **Purpose**: Initialize project skeleton, quality tooling, and repeatable local verification.
 
-- [ ] T001 Create package scaffolding and module init files in `src/rewardlab/__init__.py`, `src/rewardlab/cli/__init__.py`, `src/rewardlab/orchestrator/__init__.py`, `src/rewardlab/llm/__init__.py`, `src/rewardlab/experiments/__init__.py`, `src/rewardlab/experiments/backends/__init__.py`, `src/rewardlab/feedback/__init__.py`, `src/rewardlab/selection/__init__.py`, `src/rewardlab/persistence/__init__.py`, `src/rewardlab/schemas/__init__.py`, and `src/rewardlab/utils/__init__.py`
-- [ ] T002 Initialize dependency and project metadata in `pyproject.toml`
-- [ ] T003 Configure linting, formatting, typing, and pytest tooling in `pyproject.toml`
-- [ ] T004 [P] Configure test discovery and markers in `pytest.ini`
-- [ ] T005 [P] Add runtime environment variable template in `.env.example`
-- [ ] T006 [P] Implement contract/schema validation utility in `tools/quality/validate_contracts.py`
-- [ ] T007 [P] Implement file-header and docstring audit utility in `tools/quality/check_headers.py`
-- [ ] T008 [P] Create deterministic objective and reward fixture seeds in `tools/fixtures/objectives/cartpole.txt` and `tools/fixtures/rewards/cartpole_baseline.py`
+- [X] T001 Create package scaffolding and module init files in `src/rewardlab/__init__.py`, `src/rewardlab/cli/__init__.py`, `src/rewardlab/orchestrator/__init__.py`, `src/rewardlab/llm/__init__.py`, `src/rewardlab/experiments/__init__.py`, `src/rewardlab/experiments/backends/__init__.py`, `src/rewardlab/feedback/__init__.py`, `src/rewardlab/selection/__init__.py`, `src/rewardlab/persistence/__init__.py`, `src/rewardlab/schemas/__init__.py`, and `src/rewardlab/utils/__init__.py`
+- [X] T002 Initialize dependency and project metadata in `pyproject.toml`
+- [X] T003 Configure linting, formatting, typing, and pytest tooling in `pyproject.toml`
+- [X] T004 [P] Configure test discovery and markers in `pytest.ini`
+- [X] T005 [P] Add runtime environment variable template in `.env.example`
+- [X] T006 [P] Implement contract/schema validation utility in `tools/quality/validate_contracts.py`
+- [X] T007 [P] Implement file-header and docstring audit utility in `tools/quality/check_headers.py`
+- [X] T008 [P] Create deterministic objective and reward fixture seeds in `tools/fixtures/objectives/cartpole.txt` and `tools/fixtures/rewards/cartpole_baseline.py`
 
 ---
 
@@ -48,16 +48,16 @@ headers, function/method headers, and dead-code cleanup.
 
 **CRITICAL**: No user story work can begin until this phase is complete.
 
-- [ ] T009 Implement session config validation model in `src/rewardlab/schemas/session_config.py`
-- [ ] T010 [P] Implement session report validation model in `src/rewardlab/schemas/session_report.py`
-- [ ] T011 Implement SQLite metadata store in `src/rewardlab/persistence/sqlite_store.py`
-- [ ] T012 [P] Implement append-only JSONL event logger in `src/rewardlab/persistence/event_log.py`
-- [ ] T013 Implement session repository facade in `src/rewardlab/persistence/session_repository.py`
-- [ ] T014 [P] Implement bounded retry and backoff utilities in `src/rewardlab/utils/retry.py`
-- [ ] T015 Implement orchestrator state machine transitions in `src/rewardlab/orchestrator/state_machine.py`
-- [ ] T016 [P] Implement backend adapter interface in `src/rewardlab/experiments/backends/base.py`
-- [ ] T017 [P] Implement OpenAI API client wrapper with env-var credentials in `src/rewardlab/llm/openai_client.py`
-- [ ] T018 Implement foundational unit tests for schemas, retry logic, and state transitions in `tests/unit/test_foundational_components.py`
+- [X] T009 Implement session config validation model in `src/rewardlab/schemas/session_config.py`
+- [X] T010 [P] Implement session report validation model in `src/rewardlab/schemas/session_report.py`
+- [X] T011 Implement SQLite metadata store in `src/rewardlab/persistence/sqlite_store.py`
+- [X] T012 [P] Implement append-only JSONL event logger in `src/rewardlab/persistence/event_log.py`
+- [X] T013 Implement session repository facade in `src/rewardlab/persistence/session_repository.py`
+- [X] T014 [P] Implement bounded retry and backoff utilities in `src/rewardlab/utils/retry.py`
+- [X] T015 Implement orchestrator state machine transitions in `src/rewardlab/orchestrator/state_machine.py`
+- [X] T016 [P] Implement backend adapter interface in `src/rewardlab/experiments/backends/base.py`
+- [X] T017 [P] Implement OpenAI API client wrapper with env-var credentials in `src/rewardlab/llm/openai_client.py`
+- [X] T018 Implement foundational unit tests for schemas, retry logic, and state transitions in `tests/unit/test_foundational_components.py`
 
 **Checkpoint**: Foundation ready; user stories can now be implemented.
 

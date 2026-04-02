@@ -1,0 +1,1 @@
+Keep the pole upright while minimizing unnecessary cart motion.
