@@ -17,6 +17,7 @@ from .project import load_project_context
 from .robustness import RewardRobustnessAnalyzer
 from .registry import list_baseline_presets, validate_registry
 from .runtime import load_experiment_spec, spec_from_preset
+from .report import ProjectReporter
 from .sweep import SweepPlanner
 
 
@@ -211,6 +212,20 @@ def build_parser() -> argparse.ArgumentParser:
     )
     benchmark_aggregate_brief_parser.add_argument("--run-dir", action="append", dest="run_dirs", required=True, type=Path)
     benchmark_aggregate_brief_parser.add_argument("--metric", action="append", dest="metrics", default=None)
+
+    project_report_parser = subparsers.add_parser(
+        "project-report",
+        aliases=["final-report"],
+        help="Build a final project report from the repository artifacts",
+    )
+    project_report_parser.add_argument("--project-root", type=Path, default=None)
+
+    project_brief_parser = subparsers.add_parser(
+        "project-brief",
+        aliases=["final-brief"],
+        help="Print a human-readable final project brief",
+    )
+    project_brief_parser.add_argument("--project-root", type=Path, default=None)
 
     orchestrate_parser = subparsers.add_parser(
         "orchestrate",
@@ -626,6 +641,23 @@ def _benchmark_aggregate_brief(run_dirs: list[Path], metrics: Optional[list[str]
     return 0
 
 
+def _project_report(project_root: Optional[Path]) -> int:
+    context = load_project_context(project_root)
+    reporter = ProjectReporter()
+    report = reporter.build_report(project_root=context.paths.root)
+    output_path = context.paths.artifacts / "project_report.json"
+    report.write(output_path)
+    print(json.dumps(report.to_dict(), indent=2, sort_keys=True))
+    return 0
+
+
+def _project_brief(project_root: Optional[Path]) -> int:
+    reporter = ProjectReporter()
+    brief = reporter.build_brief(project_root=project_root)
+    print(brief.to_text(), end="")
+    return 0
+
+
 def _orchestrate_run(
     config: Optional[Path],
     preset: Optional[str],
@@ -728,6 +760,10 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         return _benchmark_aggregate(args.run_dirs, args.metrics)
     if args.command == "benchmark-aggregate-brief":
         return _benchmark_aggregate_brief(args.run_dirs, args.metrics)
+    if args.command in {"project-report", "final-report"}:
+        return _project_report(args.project_root)
+    if args.command in {"project-brief", "final-brief"}:
+        return _project_brief(args.project_root)
     if args.command == "orchestrate":
         return _orchestrate_run(
             args.config,

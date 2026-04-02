@@ -7,6 +7,7 @@ __all__ = [
     "reward_patch",
     "robustness",
     "sweep",
+    "report",
     "orchestration",
     "experiment",
 ]

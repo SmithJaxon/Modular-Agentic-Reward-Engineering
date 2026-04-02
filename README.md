@@ -2,13 +2,16 @@
 
 Research prototype for tool-based reward-function design in IsaacGym.
 
-## Current Scope
+## Current Status
 
-- Phase 1 scaffold
-- Shared project layout
-- Environment-variable configuration
-- Reproducible run manifests
-- Placeholder experiment runner
+- Phases 1 through 7 are scaffolded locally.
+- Static orchestration, robustness, sweep planning, benchmark comparison, and final reporting are all available on this machine.
+- Real IsaacGym training and benchmark execution still require the GPU VM.
+
+## Local Setup
+
+- Install in editable mode with `pip install -e .`, or run commands with `PYTHONPATH=src`.
+- Use `.env.example` as the local environment template and copy it to `.env` when ready.
 
 ## Environment Variables
 
@@ -27,13 +30,13 @@ See `.env.example` for a starter local environment file. Copy it to `.env` and f
 - `artifacts/`
 - `src/mare/`
 
-## Phase 1 CLI
+## Commands
 
 Example config:
 
 - `configs/example_experiment.yaml`
 
-Commands:
+Core run scaffolding:
 
 - `mare manifest --config configs/example_experiment.yaml`
 - `mare dry-run --config configs/example_experiment.yaml`
@@ -49,14 +52,23 @@ Commands:
 - `mare run-summary --trace runs/cartpole_baseline_dry_run/orchestration.json`
 - `mare sweep-plan --config configs/example_experiment.yaml --reward-candidate reward_candidates/cartpole_reward.py`
 - `mare sweep-plan --trace runs/cartpole_baseline_dry_run/orchestration.json`
+- `mare phase5-status --trace runs/cartpole_baseline_dry_run/orchestration.json`
+
+Benchmarking and reporting:
+
 - `mare compare-report --trace runs/cartpole_baseline_dry_run/orchestration.json`
 - `mare review-brief --trace runs/cartpole_baseline_dry_run/orchestration.json`
-- `mare phase5-status --trace runs/cartpole_baseline_dry_run/orchestration.json`
 - `mare benchmark-compare --baseline-run-dir runs/cartpole_baseline_dry_run_base --candidate-run-dir runs/cartpole_baseline_dry_run_seed_shift --metric evaluation_score`
 - `mare benchmark-brief --baseline-run-dir runs/cartpole_baseline_dry_run_base --candidate-run-dir runs/cartpole_baseline_dry_run_seed_shift --metric evaluation_score`
 - `mare benchmark-aggregate --run-dir runs/cartpole_baseline_dry_run --run-dir runs/cartpole_baseline_dry_run_base --metric evaluation_score`
 - `mare benchmark-aggregate-brief --run-dir runs/cartpole_baseline_dry_run --run-dir runs/cartpole_baseline_dry_run_base --metric evaluation_score`
+- `mare project-report`
+- `mare project-brief`
+
+Orchestration:
+
 - `mare orchestrate --config configs/example_experiment.yaml --reward-candidate reward_candidates/cartpole_reward.py`
 
 Reward candidates are Python modules with a required `compute_reward(observation, action, info)` function.
-The `orchestrate` command currently uses a local heuristic policy and writes `orchestration.json` as the loop trace.
+The `orchestrate` command defaults to GPT-5.4-nano when `OPENAI_API_KEY` is set and falls back to the local heuristic policy otherwise.
+The `orchestrate` command writes `orchestration.json` as the loop trace.
