@@ -40,3 +40,15 @@ def test_cli_dry_run_returns_success() -> None:
     exit_code = main(["dry-run", "--config", "configs/example_experiment.yaml"])
     assert exit_code == 0
 
+
+def test_cli_dry_run_with_reward_candidate_returns_success() -> None:
+    exit_code = main(
+        [
+            "dry-run",
+            "--config",
+            "configs/example_experiment.yaml",
+            "--reward-candidate",
+            "reward_candidates/cartpole_reward.py",
+        ]
+    )
+    assert exit_code == 0

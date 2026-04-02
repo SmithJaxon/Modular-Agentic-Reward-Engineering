@@ -70,6 +70,7 @@ class ExperimentRunner:
             warnings=report.warnings,
             artifacts=report_artifacts,
             notes=report.notes,
+            reward_candidate=manifest.reward_candidate,
         )
 
     def build_ppo_run_contract(

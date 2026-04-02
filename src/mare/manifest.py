@@ -18,6 +18,7 @@ class ExperimentManifest:
     created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     notes: Optional[str] = None
     extra: Dict[str, Any] = field(default_factory=dict)
+    reward_candidate: Optional[Dict[str, Any]] = None
 
     def to_json(self) -> str:
         return json.dumps(asdict(self), indent=2, sort_keys=True)
@@ -25,4 +26,3 @@ class ExperimentManifest:
     def write(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(self.to_json() + "\n", encoding="utf-8")
-

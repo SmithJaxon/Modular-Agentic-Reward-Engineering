@@ -9,6 +9,7 @@ from .experiment import ExperimentRunner
 from .execution import PPORunDispatcher
 from .manifest import ExperimentManifest
 from .launch import LaunchTarget
+from .reward_candidate import RewardCandidateLoader, RewardCandidateValidator
 from .project import load_project_context
 from .registry import list_baseline_presets, validate_registry
 from .runtime import load_experiment_spec, spec_from_preset
@@ -27,6 +28,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     manifest_parser.add_argument("--config", required=True, type=Path)
     manifest_parser.add_argument("--run-dir", type=Path, default=None)
+    manifest_parser.add_argument("--reward-candidate", type=Path, default=None)
+    manifest_parser.add_argument("--reward-entrypoint", default="compute_reward")
 
     dry_run_parser = subparsers.add_parser(
         "dry-run",
@@ -34,6 +37,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     dry_run_parser.add_argument("--config", required=True, type=Path)
     dry_run_parser.add_argument("--run-dir", type=Path, default=None)
+    dry_run_parser.add_argument("--reward-candidate", type=Path, default=None)
+    dry_run_parser.add_argument("--reward-entrypoint", default="compute_reward")
 
     preset_parser = subparsers.add_parser(
         "preset",
@@ -46,6 +51,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="Preset key from the baseline registry",
     )
     preset_parser.add_argument("--run-dir", type=Path, default=None)
+    preset_parser.add_argument("--reward-candidate", type=Path, default=None)
+    preset_parser.add_argument("--reward-entrypoint", default="compute_reward")
 
     list_parser = subparsers.add_parser(
         "list-presets",
@@ -62,6 +69,8 @@ def build_parser() -> argparse.ArgumentParser:
     plan_parser.add_argument("--run-dir", type=Path, default=None)
     plan_parser.add_argument("--kind", default="gpu_vm")
     plan_parser.add_argument("--python", dest="python_executable", default="python3")
+    plan_parser.add_argument("--reward-candidate", type=Path, default=None)
+    plan_parser.add_argument("--reward-entrypoint", default="compute_reward")
 
     preview_parser = subparsers.add_parser(
         "preview",
@@ -73,6 +82,8 @@ def build_parser() -> argparse.ArgumentParser:
     preview_parser.add_argument("--run-dir", type=Path, default=None)
     preview_parser.add_argument("--kind", default="gpu_vm")
     preview_parser.add_argument("--python", dest="python_executable", default="python3")
+    preview_parser.add_argument("--reward-candidate", type=Path, default=None)
+    preview_parser.add_argument("--reward-entrypoint", default="compute_reward")
 
     script_parser = subparsers.add_parser(
         "script",
@@ -84,6 +95,22 @@ def build_parser() -> argparse.ArgumentParser:
     script_parser.add_argument("--run-dir", type=Path, default=None)
     script_parser.add_argument("--kind", default="gpu_vm")
     script_parser.add_argument("--python", dest="python_executable", default="python3")
+    script_parser.add_argument("--reward-candidate", type=Path, default=None)
+    script_parser.add_argument("--reward-entrypoint", default="compute_reward")
+
+    reward_validate_parser = subparsers.add_parser(
+        "reward-validate",
+        help="Validate a Python reward candidate module",
+    )
+    reward_validate_parser.add_argument("--path", required=True, type=Path)
+    reward_validate_parser.add_argument("--entrypoint", default="compute_reward")
+
+    reward_load_parser = subparsers.add_parser(
+        "reward-load",
+        help="Validate and load a Python reward candidate module",
+    )
+    reward_load_parser.add_argument("--path", required=True, type=Path)
+    reward_load_parser.add_argument("--entrypoint", default="compute_reward")
 
     return parser
 
@@ -116,10 +143,35 @@ def _resolve_run_dir(default_root: Path, run_dir: Optional[Path], manifest: Expe
     return run_dir if run_dir is not None else default_root / manifest.name
 
 
-def _run_manifest(path: Path, run_dir: Optional[Path], do_dry_run: bool) -> int:
+def _load_reward_candidate_metadata(
+    reward_candidate: Optional[Path],
+    reward_entrypoint: str,
+) -> Optional[dict]:
+    if reward_candidate is None:
+        return None
+    loader = RewardCandidateLoader()
+    loaded = loader.load(reward_candidate, entrypoint=reward_entrypoint)
+    validator = RewardCandidateValidator()
+    result = validator.validate_file(reward_candidate, entrypoint=reward_entrypoint)
+    return {
+        "name": loaded.spec.name,
+        "path": str(loaded.spec.path),
+        "entrypoint": loaded.spec.entrypoint,
+        "validation": result.to_dict(),
+    }
+
+
+def _run_manifest(
+    path: Path,
+    run_dir: Optional[Path],
+    do_dry_run: bool,
+    reward_candidate: Optional[Path] = None,
+    reward_entrypoint: str = "compute_reward",
+) -> int:
     context = load_project_context()
     runner = ExperimentRunner(context.paths)
     manifest = _create_manifest(path)
+    manifest.reward_candidate = _load_reward_candidate_metadata(reward_candidate, reward_entrypoint)
     resolved_run_dir = _resolve_run_dir(context.paths.runs, run_dir, manifest)
     resolved_run_dir.mkdir(parents=True, exist_ok=True)
     manifest_path = runner.save_manifest(resolved_run_dir, manifest)
@@ -136,10 +188,17 @@ def _run_manifest(path: Path, run_dir: Optional[Path], do_dry_run: bool) -> int:
     return 0
 
 
-def _run_preset(name: str, run_dir: Optional[Path], do_dry_run: bool) -> int:
+def _run_preset(
+    name: str,
+    run_dir: Optional[Path],
+    do_dry_run: bool,
+    reward_candidate: Optional[Path] = None,
+    reward_entrypoint: str = "compute_reward",
+) -> int:
     context = load_project_context()
     runner = ExperimentRunner(context.paths)
     manifest = _create_manifest_from_preset(name)
+    manifest.reward_candidate = _load_reward_candidate_metadata(reward_candidate, reward_entrypoint)
     resolved_run_dir = _resolve_run_dir(context.paths.runs, run_dir, manifest)
     resolved_run_dir.mkdir(parents=True, exist_ok=True)
     manifest_path = runner.save_manifest(resolved_run_dir, manifest)
@@ -179,10 +238,13 @@ def _plan_run(
     run_dir: Optional[Path],
     kind: str,
     python_executable: str,
+    reward_candidate: Optional[Path],
+    reward_entrypoint: str,
 ) -> int:
     context = load_project_context()
     runner = ExperimentRunner(context.paths)
     manifest = _load_manifest_from_args(config, preset)
+    manifest.reward_candidate = _load_reward_candidate_metadata(reward_candidate, reward_entrypoint)
     resolved_run_dir = _resolve_run_dir(context.paths.runs, run_dir, manifest)
     resolved_run_dir.mkdir(parents=True, exist_ok=True)
     manifest_path = runner.save_manifest(resolved_run_dir, manifest)
@@ -206,10 +268,13 @@ def _preview_run(
     run_dir: Optional[Path],
     kind: str,
     python_executable: str,
+    reward_candidate: Optional[Path],
+    reward_entrypoint: str,
 ) -> int:
     context = load_project_context()
     runner = ExperimentRunner(context.paths)
     manifest = _load_manifest_from_args(config, preset)
+    manifest.reward_candidate = _load_reward_candidate_metadata(reward_candidate, reward_entrypoint)
     resolved_run_dir = _resolve_run_dir(context.paths.runs, run_dir, manifest)
     resolved_run_dir.mkdir(parents=True, exist_ok=True)
     runner.save_manifest(resolved_run_dir, manifest)
@@ -232,10 +297,13 @@ def _write_script(
     run_dir: Optional[Path],
     kind: str,
     python_executable: str,
+    reward_candidate: Optional[Path],
+    reward_entrypoint: str,
 ) -> int:
     context = load_project_context()
     runner = ExperimentRunner(context.paths)
     manifest = _load_manifest_from_args(config, preset)
+    manifest.reward_candidate = _load_reward_candidate_metadata(reward_candidate, reward_entrypoint)
     resolved_run_dir = _resolve_run_dir(context.paths.runs, run_dir, manifest)
     resolved_run_dir.mkdir(parents=True, exist_ok=True)
     runner.save_manifest(resolved_run_dir, manifest)
@@ -251,24 +319,52 @@ def _write_script(
     return 0
 
 
+def _validate_reward_candidate(path: Path, entrypoint: str) -> int:
+    validator = RewardCandidateValidator()
+    result = validator.validate_file(path, entrypoint=entrypoint)
+    print(json.dumps(result.to_dict(), indent=2, sort_keys=True))
+    return 0 if result.valid else 1
+
+
+def _load_reward_candidate(path: Path, entrypoint: str) -> int:
+    loader = RewardCandidateLoader()
+    candidate = loader.load(path, entrypoint=entrypoint)
+    preview = candidate.reward([0.0, 0.0], 0, {})
+    print(json.dumps(
+        {
+            "name": candidate.spec.name,
+            "path": str(candidate.spec.path),
+            "entrypoint": candidate.spec.entrypoint,
+            "preview_reward": preview,
+        },
+        indent=2,
+        sort_keys=True,
+    ))
+    return 0
+
+
 def main(argv: Optional[Iterable[str]] = None) -> int:
     parser = build_parser()
     args = parser.parse_args(list(argv) if argv is not None else None)
 
     if args.command == "manifest":
-        return _run_manifest(args.config, args.run_dir, do_dry_run=False)
+        return _run_manifest(args.config, args.run_dir, do_dry_run=False, reward_candidate=args.reward_candidate, reward_entrypoint=args.reward_entrypoint)
     if args.command == "dry-run":
-        return _run_manifest(args.config, args.run_dir, do_dry_run=True)
+        return _run_manifest(args.config, args.run_dir, do_dry_run=True, reward_candidate=args.reward_candidate, reward_entrypoint=args.reward_entrypoint)
     if args.command == "preset":
-        return _run_preset(args.name, args.run_dir, do_dry_run=False)
+        return _run_preset(args.name, args.run_dir, do_dry_run=False, reward_candidate=args.reward_candidate, reward_entrypoint=args.reward_entrypoint)
     if args.command == "list-presets":
         return _list_presets()
     if args.command == "plan":
-        return _plan_run(args.config, args.preset, args.run_dir, args.kind, args.python_executable)
+        return _plan_run(args.config, args.preset, args.run_dir, args.kind, args.python_executable, args.reward_candidate, args.reward_entrypoint)
     if args.command == "preview":
-        return _preview_run(args.config, args.preset, args.run_dir, args.kind, args.python_executable)
+        return _preview_run(args.config, args.preset, args.run_dir, args.kind, args.python_executable, args.reward_candidate, args.reward_entrypoint)
     if args.command == "script":
-        return _write_script(args.config, args.preset, args.run_dir, args.kind, args.python_executable)
+        return _write_script(args.config, args.preset, args.run_dir, args.kind, args.python_executable, args.reward_candidate, args.reward_entrypoint)
+    if args.command == "reward-validate":
+        return _validate_reward_candidate(args.path, args.entrypoint)
+    if args.command == "reward-load":
+        return _load_reward_candidate(args.path, args.entrypoint)
 
     parser.error("Unknown command")
     return 2

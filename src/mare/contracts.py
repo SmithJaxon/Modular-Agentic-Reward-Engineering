@@ -25,6 +25,7 @@ class RunReport:
     warnings: List[str] = field(default_factory=list)
     artifacts: List[RunArtifact] = field(default_factory=list)
     notes: Optional[str] = None
+    reward_candidate: Optional[Dict[str, Any]] = None
 
     def to_dict(self) -> Dict[str, Any]:
         payload = asdict(self)

@@ -2,6 +2,6 @@
 
 __all__ = [
     "config",
+    "reward_candidate",
     "experiment",
 ]
-

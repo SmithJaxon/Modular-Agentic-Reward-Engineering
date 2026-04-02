@@ -40,3 +40,7 @@ Commands:
 - `mare list-presets`
 - `mare preset --name cartpole`
 - `mare script --config configs/example_experiment.yaml`
+- `mare reward-validate --path reward_candidates/cartpole_reward.py`
+- `mare reward-load --path reward_candidates/cartpole_reward.py`
+
+Reward candidates are Python modules with a required `compute_reward(observation, action, info)` function.
