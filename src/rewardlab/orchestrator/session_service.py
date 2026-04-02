@@ -11,12 +11,18 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+from rewardlab.feedback.demo_artifacts import DemoArtifactTracker
+from rewardlab.feedback.gating import FeedbackGateEvaluator
+from rewardlab.feedback.human_feedback_service import HumanFeedbackService
+from rewardlab.feedback.peer_feedback_client import PeerFeedbackClient
+from rewardlab.llm.openai_client import OpenAIClient
 from rewardlab.orchestrator.checkpointing import CheckpointManager
 from rewardlab.orchestrator.iteration_engine import IterationEngine
 from rewardlab.orchestrator.reporting import SessionReportWriter
 from rewardlab.orchestrator.state_machine import TransitionRequest, apply_transition
 from rewardlab.persistence.event_log import EventRecord
 from rewardlab.persistence.session_repository import RepositoryPaths, SessionRepository
+from rewardlab.schemas.feedback_entry import FeedbackEntry
 from rewardlab.schemas.reflection_record import ReflectionRecord
 from rewardlab.schemas.reward_candidate import RewardCandidate
 from rewardlab.schemas.session_config import (
@@ -30,6 +36,7 @@ from rewardlab.schemas.session_config import (
 from rewardlab.selection.policy import CandidateSelectionPolicy
 
 SESSION_CANDIDATES_NAMESPACE = "session_candidates"
+SESSION_FEEDBACK_NAMESPACE = "session_feedback"
 SESSION_REFLECTIONS_NAMESPACE = "session_reflections"
 
 
@@ -137,6 +144,9 @@ class SessionService:
         selection_policy: CandidateSelectionPolicy | None = None,
         checkpoint_manager: CheckpointManager | None = None,
         report_writer: SessionReportWriter | None = None,
+        human_feedback_service: HumanFeedbackService | None = None,
+        peer_feedback_client: PeerFeedbackClient | None = None,
+        feedback_gate_evaluator: FeedbackGateEvaluator | None = None,
     ) -> None:
         """Construct a session service using worktree-local dependencies."""
 
@@ -151,6 +161,11 @@ class SessionService:
         self.selection_policy = selection_policy or CandidateSelectionPolicy()
         self.checkpoint_manager = checkpoint_manager or CheckpointManager(paths.checkpoint_dir)
         self.report_writer = report_writer or SessionReportWriter(paths.report_dir)
+        self.human_feedback_service = human_feedback_service or HumanFeedbackService(
+            DemoArtifactTracker(paths.report_dir / "feedback_artifacts")
+        )
+        self.peer_feedback_client = peer_feedback_client or PeerFeedbackClient(OpenAIClient())
+        self.feedback_gate_evaluator = feedback_gate_evaluator or FeedbackGateEvaluator()
 
     def initialize(self) -> None:
         """Initialize local persistence directories and stores."""
@@ -324,10 +339,17 @@ class SessionService:
 
         candidates = self.list_candidates(session_id)
         reflections = self.list_reflections(session_id)
+        feedback_entries = self.list_feedback(session_id)
+        gate_result = self.feedback_gate_evaluator.evaluate(
+            feedback_gate=session.feedback_gate,
+            feedback_entries=feedback_entries,
+        )
         report_path = self.report_writer.write_report(
             session=session,
             candidates=candidates,
             reflections=reflections,
+            feedback_entries=feedback_entries,
+            gate_result=gate_result,
         )
         self.repository.save_session(session)
         self.repository.append_event(
@@ -378,10 +400,17 @@ class SessionService:
         session = self._get_required_session(session_id)
         candidates = self.list_candidates(session_id)
         reflections = self.list_reflections(session_id)
+        feedback_entries = self.list_feedback(session_id)
+        gate_result = self.feedback_gate_evaluator.evaluate(
+            feedback_gate=session.feedback_gate,
+            feedback_entries=feedback_entries,
+        )
         report_path = self.report_writer.write_report(
             session=session,
             candidates=candidates,
             reflections=reflections,
+            feedback_entries=feedback_entries,
+            gate_result=gate_result,
         )
         return StoppedSession(
             session_id=session_id,
@@ -413,6 +442,67 @@ class SessionService:
         reflections = [ReflectionRecord.model_validate(payload) for payload in payloads]
         return sorted(reflections, key=lambda reflection: reflection.created_at)
 
+    def submit_human_feedback(
+        self,
+        *,
+        session_id: str,
+        candidate_id: str,
+        comment: str,
+        score: float | None = None,
+        artifact_ref: str | None = None,
+    ) -> FeedbackEntry:
+        """Create, persist, and emit a human feedback entry."""
+
+        self._get_required_candidate(session_id, candidate_id)
+        feedback = self.human_feedback_service.submit_feedback(
+            session_id=session_id,
+            candidate_id=candidate_id,
+            comment=comment,
+            score=score,
+            artifact_ref=artifact_ref,
+        )
+        self._save_feedback(session_id, feedback)
+        self.repository.append_event(
+            session_id=session_id,
+            event_type="feedback.human_submitted",
+            payload={"feedback_id": feedback.feedback_id, "candidate_id": candidate_id},
+        )
+        return feedback
+
+    def request_peer_feedback(
+        self,
+        *,
+        session_id: str,
+        candidate_id: str,
+    ) -> FeedbackEntry:
+        """Request, persist, and emit peer feedback for a candidate."""
+
+        session = self._get_required_session(session_id)
+        candidate = self._get_required_candidate(session_id, candidate_id)
+        feedback = self.peer_feedback_client.request_feedback(
+            session_id=session_id,
+            candidate_id=candidate_id,
+            objective_text=str(session.metadata["objective_text"]),
+            reward_definition=candidate.reward_definition,
+            aggregate_score=candidate.aggregate_score,
+        )
+        self._save_feedback(session_id, feedback)
+        self.repository.append_event(
+            session_id=session_id,
+            event_type="feedback.peer_requested",
+            payload={"feedback_id": feedback.feedback_id, "candidate_id": candidate_id},
+        )
+        return feedback
+
+    def list_feedback(self, session_id: str) -> list[FeedbackEntry]:
+        """Return feedback entries for a session ordered by creation time."""
+
+        payloads = self.repository.metadata_store.list_namespaced_items(
+            _feedback_namespace(session_id)
+        )
+        feedback_entries = [FeedbackEntry.model_validate(payload) for payload in payloads]
+        return sorted(feedback_entries, key=lambda feedback: feedback.created_at)
+
     def read_events(self, session_id: str) -> list[EventRecord]:
         """Return persisted event log records for a session."""
 
@@ -425,6 +515,18 @@ class SessionService:
         if session is None:
             raise ValueError(f"session {session_id!r} does not exist")
         return session
+
+    def _get_required_candidate(
+        self,
+        session_id: str,
+        candidate_id: str,
+    ) -> RewardCandidate:
+        """Load a stored candidate and raise when it does not exist."""
+
+        for candidate in self.list_candidates(session_id):
+            if candidate.candidate_id == candidate_id:
+                return candidate
+        raise ValueError(f"candidate {candidate_id!r} does not exist")
 
     def _save_candidate(self, candidate: RewardCandidate) -> None:
         """Persist a reward candidate under the session candidate namespace."""
@@ -445,6 +547,16 @@ class SessionService:
             item_key=reflection.reflection_id,
             payload=reflection.model_dump(mode="json"),
             updated_at=reflection.created_at.isoformat(),
+        )
+
+    def _save_feedback(self, session_id: str, feedback: FeedbackEntry) -> None:
+        """Persist a feedback entry under the session feedback namespace."""
+
+        self.repository.metadata_store.upsert_namespaced_item(
+            namespace=_feedback_namespace(session_id),
+            item_key=feedback.feedback_id,
+            payload=feedback.model_dump(mode="json"),
+            updated_at=feedback.created_at.isoformat(),
         )
 
     def _write_checkpoint(
@@ -498,6 +610,12 @@ def _reflection_namespace(session_id: str) -> str:
     """Return the metadata namespace used for session reflections."""
 
     return f"{SESSION_REFLECTIONS_NAMESPACE}:{session_id}"
+
+
+def _feedback_namespace(session_id: str) -> str:
+    """Return the metadata namespace used for session feedback entries."""
+
+    return f"{SESSION_FEEDBACK_NAMESPACE}:{session_id}"
 
 
 def _default_session_id() -> str:

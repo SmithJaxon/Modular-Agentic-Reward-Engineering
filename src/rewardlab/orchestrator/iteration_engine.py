@@ -7,8 +7,10 @@ Last Updated: 2026-04-02
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 
+from rewardlab.schemas.feedback_entry import FeedbackEntry
 from rewardlab.schemas.reflection_record import ReflectionRecord
 from rewardlab.schemas.reward_candidate import RewardCandidate
 
@@ -118,3 +120,17 @@ def _revise_reward_definition(
         f"# Objective terms: {objective_terms}\n"
         f"{change_block}\n"
     )
+
+
+def build_iteration_summary(
+    *,
+    candidate: RewardCandidate,
+    reflection: ReflectionRecord | None,
+    feedback_entries: Sequence[FeedbackEntry],
+) -> str:
+    """Build a concise iteration summary that incorporates available feedback."""
+
+    base_summary = reflection.summary if reflection is not None else candidate.change_summary
+    if not feedback_entries:
+        return base_summary
+    return f"{base_summary} Feedback entries recorded: {len(feedback_entries)}."

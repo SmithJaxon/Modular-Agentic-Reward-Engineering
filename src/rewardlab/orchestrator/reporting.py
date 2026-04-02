@@ -9,6 +9,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from rewardlab.feedback.gating import FeedbackGateResult
+from rewardlab.orchestrator.iteration_engine import build_iteration_summary
+from rewardlab.schemas.feedback_entry import FeedbackEntry
 from rewardlab.schemas.reflection_record import ReflectionRecord
 from rewardlab.schemas.reward_candidate import RewardCandidate
 from rewardlab.schemas.session_config import SessionRecord, SessionStatus, StopReason
@@ -35,6 +38,8 @@ class SessionReportWriter:
         session: SessionRecord,
         candidates: list[RewardCandidate],
         reflections: list[ReflectionRecord],
+        feedback_entries: list[FeedbackEntry],
+        gate_result: FeedbackGateResult,
     ) -> SessionReport:
         """Construct a validated session report from persisted session artifacts."""
 
@@ -42,20 +47,22 @@ class SessionReportWriter:
         reflection_by_candidate = {
             reflection.candidate_id: reflection for reflection in reflections
         }
+        feedback_by_candidate = _group_feedback_by_candidate(feedback_entries)
         iterations = [
             IterationSummary(
                 iteration_index=candidate.iteration_index,
                 candidate_id=candidate.candidate_id,
-                performance_summary=(
-                    reflection_by_candidate[candidate.parent_candidate_id].summary
-                    if (
-                        candidate.parent_candidate_id
-                        and candidate.parent_candidate_id in reflection_by_candidate
-                    )
-                    else candidate.change_summary
+                performance_summary=build_iteration_summary(
+                    candidate=candidate,
+                    reflection=(
+                        reflection_by_candidate.get(candidate.parent_candidate_id)
+                        if candidate.parent_candidate_id is not None
+                        else None
+                    ),
+                    feedback_entries=feedback_by_candidate.get(candidate.candidate_id, []),
                 ),
                 risk_level=RiskLevel.LOW,
-                feedback_count=0,
+                feedback_count=len(feedback_by_candidate.get(candidate.candidate_id, [])),
             )
             for candidate in sorted(candidates, key=lambda item: item.iteration_index)
         ]
@@ -67,7 +74,7 @@ class SessionReportWriter:
             best_candidate=SelectionCandidate(
                 candidate_id=best_candidate.candidate_id,
                 aggregate_score=best_candidate.aggregate_score or 0.0,
-                selection_summary="Highest-ranked candidate by deterministic MVP selection policy.",
+                selection_summary=_selection_summary(gate_result),
                 minor_robustness_risk_accepted=best_candidate.minor_robustness_risk_accepted,
             ),
             iterations=iterations,
@@ -79,6 +86,8 @@ class SessionReportWriter:
         session: SessionRecord,
         candidates: list[RewardCandidate],
         reflections: list[ReflectionRecord],
+        feedback_entries: list[FeedbackEntry],
+        gate_result: FeedbackGateResult,
     ) -> Path:
         """Write a JSON report artifact and return its path."""
 
@@ -87,6 +96,8 @@ class SessionReportWriter:
             session=session,
             candidates=candidates,
             reflections=reflections,
+            feedback_entries=feedback_entries,
+            gate_result=gate_result,
         )
         report_path = self.report_dir / f"{session.session_id}.report.json"
         report_path.write_text(
@@ -124,3 +135,30 @@ def _report_status_from_session(status: SessionStatus) -> ReportStatus:
     if status not in mapping:
         raise ValueError(f"session status {status.value!r} cannot be reported yet")
     return mapping[status]
+
+
+def _group_feedback_by_candidate(
+    feedback_entries: list[FeedbackEntry],
+) -> dict[str, list[FeedbackEntry]]:
+    """Group feedback entries by candidate identifier."""
+
+    grouped: dict[str, list[FeedbackEntry]] = {}
+    for entry in feedback_entries:
+        grouped.setdefault(entry.candidate_id, []).append(entry)
+    return grouped
+
+
+def _selection_summary(gate_result: FeedbackGateResult) -> str:
+    """Return the final selection summary message for the report."""
+
+    if not gate_result.satisfied:
+        return "Recommendation pending required feedback gate."
+    if gate_result.conflict_detected:
+        return (
+            "Feedback gate satisfied with conflicting feedback; inspect human and peer "
+            "notes before merge."
+        )
+    return (
+        "Feedback gate satisfied. Highest-ranked candidate by deterministic MVP "
+        "selection policy."
+    )

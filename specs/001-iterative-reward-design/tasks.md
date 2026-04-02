@@ -130,21 +130,21 @@ headers, function/method headers, and dead-code cleanup.
 
 ### Tests for User Story 3
 
-- [ ] T046 [P] [US3] Add CLI contract tests for `feedback submit-human` and `feedback request-peer` in `tests/contract/test_feedback_cli.py`
-- [ ] T047 [P] [US3] Add integration tests for session-level feedback gating modes in `tests/integration/test_feedback_gating.py`
-- [ ] T048 [P] [US3] Add integration tests for conflicting human/peer feedback resolution in `tests/integration/test_feedback_conflicts.py`
+- [x] T046 [P] [US3] Add CLI contract tests for `feedback submit-human` and `feedback request-peer` in `tests/contract/test_feedback_cli.py`
+- [x] T047 [P] [US3] Add integration tests for session-level feedback gating modes in `tests/integration/test_feedback_gating.py`
+- [x] T048 [P] [US3] Add integration tests for conflicting human/peer feedback resolution in `tests/integration/test_feedback_conflicts.py`
 
 ### Implementation for User Story 3
 
-- [ ] T049 [P] [US3] Implement feedback entry schema in `src/rewardlab/schemas/feedback_entry.py`
-- [ ] T050 [US3] Implement human feedback ingestion service in `src/rewardlab/feedback/human_feedback_service.py`
-- [ ] T051 [US3] Implement isolated peer feedback client in `src/rewardlab/feedback/peer_feedback_client.py`
-- [ ] T052 [US3] Implement feedback gating evaluator in `src/rewardlab/feedback/gating.py`
-- [ ] T053 [US3] Implement visual demonstration artifact tracker in `src/rewardlab/feedback/demo_artifacts.py`
-- [ ] T054 [US3] Implement feedback CLI command handlers in `src/rewardlab/cli/feedback_commands.py`
-- [ ] T055 [US3] Integrate feedback signals into iteration summaries in `src/rewardlab/orchestrator/iteration_engine.py`
-- [ ] T056 [US3] Integrate gating and feedback requirements into final recommendation path in `src/rewardlab/orchestrator/session_service.py`
-- [ ] T057 [US3] Add required file headers and function/method docstrings in `src/rewardlab/feedback/human_feedback_service.py` and `src/rewardlab/feedback/peer_feedback_client.py`
+- [x] T049 [P] [US3] Implement feedback entry schema in `src/rewardlab/schemas/feedback_entry.py`
+- [x] T050 [US3] Implement human feedback ingestion service in `src/rewardlab/feedback/human_feedback_service.py`
+- [x] T051 [US3] Implement isolated peer feedback client in `src/rewardlab/feedback/peer_feedback_client.py`
+- [x] T052 [US3] Implement feedback gating evaluator in `src/rewardlab/feedback/gating.py`
+- [x] T053 [US3] Implement visual demonstration artifact tracker in `src/rewardlab/feedback/demo_artifacts.py`
+- [x] T054 [US3] Implement feedback CLI command handlers in `src/rewardlab/cli/feedback_commands.py`
+- [x] T055 [US3] Integrate feedback signals into iteration summaries in `src/rewardlab/orchestrator/iteration_engine.py`
+- [x] T056 [US3] Integrate gating and feedback requirements into final recommendation path in `src/rewardlab/orchestrator/session_service.py`
+- [x] T057 [US3] Add required file headers and function/method docstrings in `src/rewardlab/feedback/human_feedback_service.py` and `src/rewardlab/feedback/peer_feedback_client.py`
 
 **Checkpoint**: Feedback channels and gating policies are independently testable.
 
