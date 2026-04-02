@@ -48,16 +48,16 @@ headers, function/method headers, and dead-code cleanup.
 
 **CRITICAL**: No user story work can begin until this phase is complete.
 
-- [ ] T009 Implement session config validation model in `src/rewardlab/schemas/session_config.py`
-- [ ] T010 [P] Implement session report validation model in `src/rewardlab/schemas/session_report.py`
-- [ ] T011 Implement SQLite metadata store in `src/rewardlab/persistence/sqlite_store.py`
-- [ ] T012 [P] Implement append-only JSONL event logger in `src/rewardlab/persistence/event_log.py`
-- [ ] T013 Implement session repository facade in `src/rewardlab/persistence/session_repository.py`
-- [ ] T014 [P] Implement bounded retry and backoff utilities in `src/rewardlab/utils/retry.py`
-- [ ] T015 Implement orchestrator state machine transitions in `src/rewardlab/orchestrator/state_machine.py`
-- [ ] T016 [P] Implement backend adapter interface in `src/rewardlab/experiments/backends/base.py`
-- [ ] T017 [P] Implement OpenAI API client wrapper with env-var credentials in `src/rewardlab/llm/openai_client.py`
-- [ ] T018 Implement foundational unit tests for schemas, retry logic, and state transitions in `tests/unit/test_foundational_components.py`
+- [x] T009 Implement session config validation model in `src/rewardlab/schemas/session_config.py`
+- [x] T010 [P] Implement session report validation model in `src/rewardlab/schemas/session_report.py`
+- [x] T011 Implement SQLite metadata store in `src/rewardlab/persistence/sqlite_store.py`
+- [x] T012 [P] Implement append-only JSONL event logger in `src/rewardlab/persistence/event_log.py`
+- [x] T013 Implement session repository facade in `src/rewardlab/persistence/session_repository.py`
+- [x] T014 [P] Implement bounded retry and backoff utilities in `src/rewardlab/utils/retry.py`
+- [x] T015 Implement orchestrator state machine transitions in `src/rewardlab/orchestrator/state_machine.py`
+- [x] T016 [P] Implement backend adapter interface in `src/rewardlab/experiments/backends/base.py`
+- [x] T017 [P] Implement OpenAI API client wrapper with env-var credentials in `src/rewardlab/llm/openai_client.py`
+- [x] T018 Implement foundational unit tests for schemas, retry logic, and state transitions in `tests/unit/test_foundational_components.py`
 
 **Checkpoint**: Foundation ready; user stories can now be implemented.
 

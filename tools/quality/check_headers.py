@@ -7,10 +7,9 @@ Last Updated: 2026-04-02
 import argparse
 import ast
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Sequence
-
 
 MODULE_HEADER_FIELDS = ("Summary:", "Created:", "Last Updated:")
 
@@ -34,7 +33,9 @@ def collect_python_files(paths: Sequence[Path]) -> list[Path]:
     for raw_path in paths:
         path = raw_path.resolve()
         if path.is_dir():
-            candidates = sorted(candidate for candidate in path.rglob("*.py") if candidate.is_file())
+            candidates = sorted(
+                candidate for candidate in path.rglob("*.py") if candidate.is_file()
+            )
         elif path.suffix == ".py" and path.is_file():
             candidates = [path]
         else:
@@ -73,7 +74,10 @@ def audit_module_header(path: Path, source: str) -> list[Issue]:
                 path=path,
                 line=1,
                 code="MISSING_MODULE_HEADER",
-                message="Missing module docstring header with Summary, Created, and Last Updated fields.",
+                message=(
+                    "Missing module docstring header with Summary, Created, "
+                    "and Last Updated fields."
+                ),
             )
         ]
 
@@ -231,13 +235,11 @@ def _is_trivial_noop(statement: ast.stmt) -> bool:
 
     if isinstance(statement, ast.Pass):
         return True
-    if (
+    return (
         isinstance(statement, ast.Expr)
         and isinstance(statement.value, ast.Constant)
         and statement.value.value is Ellipsis
-    ):
-        return True
-    return False
+    )
 
 
 if __name__ == "__main__":

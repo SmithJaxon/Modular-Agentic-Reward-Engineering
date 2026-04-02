@@ -12,10 +12,22 @@ from typing import Any, Protocol
 
 
 class SupportsChatCompletions(Protocol):
-    """Protocol for the minimal OpenAI chat-completions surface used by RewardLab."""
+    """Protocol for the minimal chat-completions create surface."""
 
     def create(self, **kwargs: Any) -> Any:
         """Create a chat completion request."""
+
+
+class SupportsChatNamespace(Protocol):
+    """Protocol for the nested chat.completions namespace used by the client."""
+
+    completions: SupportsChatCompletions
+
+
+class SupportsChatClient(Protocol):
+    """Protocol for the root client object used by the wrapper."""
+
+    chat: SupportsChatNamespace
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,7 +85,7 @@ class OpenAIClient:
     def __init__(
         self,
         config: OpenAIClientConfig | None = None,
-        client: SupportsChatCompletions | Any | None = None,
+        client: SupportsChatClient | None = None,
     ) -> None:
         """Create a client wrapper from config or an injected SDK-compatible client."""
 
@@ -104,7 +116,7 @@ class OpenAIClient:
 
         return self._config.has_credentials
 
-    def with_client(self, client: SupportsChatCompletions | Any) -> OpenAIClient:
+    def with_client(self, client: SupportsChatClient) -> OpenAIClient:
         """Return a copy of this wrapper that uses the provided SDK-compatible client."""
 
         return OpenAIClient(config=self._config, client=client)
@@ -135,8 +147,8 @@ class OpenAIClient:
     def chat_completion(self, request: ChatCompletionRequest) -> ChatCompletionResponse:
         """Send one chat completion request and normalize the response."""
 
-        client = self._client or self.build_client()
-        payload = {
+        client: Any = self._client or self.build_client()
+        payload: dict[str, Any] = {
             "model": request.model,
             "messages": [
                 {"role": message.role, "content": message.content}

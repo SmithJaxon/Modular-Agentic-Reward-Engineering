@@ -118,7 +118,7 @@ class BackendAdapter(ABC):
                     terminal_reason = "truncated"
                     break
         finally:
-            environment.close()
+            self.close_environment(environment)
 
         return BackendEpisodeResult(
             steps=tuple(steps),
