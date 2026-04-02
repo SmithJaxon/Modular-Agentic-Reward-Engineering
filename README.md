@@ -44,6 +44,14 @@ Commands:
 - `mare reward-load --path reward_candidates/cartpole_reward.py`
 - `mare recommend-reward-patch --path reward_candidates/cartpole_reward.py`
 - `mare recommend-reward-patch --trace runs/cartpole_baseline_dry_run/orchestration.json`
+- `mare reward-robustness --path reward_candidates/cartpole_reward.py`
+- `mare reward-robustness --trace runs/cartpole_baseline_dry_run/orchestration.json`
+- `mare run-summary --trace runs/cartpole_baseline_dry_run/orchestration.json`
+- `mare sweep-plan --config configs/example_experiment.yaml --reward-candidate reward_candidates/cartpole_reward.py`
+- `mare sweep-plan --trace runs/cartpole_baseline_dry_run/orchestration.json`
+- `mare compare-report --trace runs/cartpole_baseline_dry_run/orchestration.json`
+- `mare review-brief --trace runs/cartpole_baseline_dry_run/orchestration.json`
+- `mare phase5-status --trace runs/cartpole_baseline_dry_run/orchestration.json`
 - `mare orchestrate --config configs/example_experiment.yaml --reward-candidate reward_candidates/cartpole_reward.py`
 
 Reward candidates are Python modules with a required `compute_reward(observation, action, info)` function.

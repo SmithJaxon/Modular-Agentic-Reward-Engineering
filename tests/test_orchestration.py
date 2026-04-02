@@ -38,6 +38,7 @@ def test_orchestrator_runs_validate_preview_and_script(tmp_path: Path) -> None:
     assert trace.status == "completed"
     assert [step.decision.decision for step in trace.steps] == [
         "validate_reward_candidate",
+        "assess_reward_robustness",
         "preview_launch",
         "write_launch_script",
     ]

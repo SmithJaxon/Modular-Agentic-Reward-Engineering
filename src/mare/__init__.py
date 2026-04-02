@@ -4,6 +4,8 @@ __all__ = [
     "config",
     "reward_candidate",
     "reward_patch",
+    "robustness",
+    "sweep",
     "orchestration",
     "experiment",
 ]

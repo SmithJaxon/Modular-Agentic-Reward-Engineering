@@ -11,6 +11,7 @@ from .launch import LaunchTarget
 from .manifest import ExperimentManifest
 from .paths import ProjectPaths
 from .reward_candidate import RewardCandidateLoader, RewardCandidateValidator
+from .robustness import RewardRobustnessAnalyzer, RobustnessAssessment
 
 
 @dataclass(frozen=True)
@@ -67,10 +68,14 @@ class OrchestrationState:
     reward_entrypoint: str = "compute_reward"
     validated: bool = False
     valid: Optional[bool] = None
+    robustness_checked: bool = False
+    robustness_rejected: bool = False
+    robustness_score: Optional[float] = None
+    robustness_risk: Optional[str] = None
     previewed: bool = False
     scripted: bool = False
     current_step: int = 0
-    max_steps: int = 3
+    max_steps: int = 4
 
 
 @dataclass(frozen=True)
@@ -83,6 +88,7 @@ class OrchestrationTrace:
     status: str
     steps: List[OrchestrationStep] = field(default_factory=list)
     reward_candidate: Optional[Dict[str, Any]] = None
+    robustness_assessment: Optional[Dict[str, Any]] = None
     notes: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
@@ -93,6 +99,7 @@ class OrchestrationTrace:
             "status": self.status,
             "steps": [step.to_dict() for step in self.steps],
             "reward_candidate": self.reward_candidate,
+            "robustness_assessment": self.robustness_assessment,
             "notes": self.notes,
         }
 
@@ -137,6 +144,22 @@ class HeuristicOrchestrationPolicy:
                 suggested_patch="Patch the reward module to remove invalid imports or restore the required compute_reward signature.",
                 confidence=0.98,
             )
+        if not state.robustness_checked:
+            return OrchestrationDecision(
+                decision="assess_reward_robustness",
+                rationale="Validation passed; a cheap robustness screen should run before launch planning.",
+                suggested_edit="Review the robustness score and scenario plan before launch.",
+                suggested_patch="If robustness is only medium or worse, tighten the shaping term or add bounded state-aware terms before launch.",
+                confidence=0.92,
+            )
+        if state.robustness_rejected:
+            return OrchestrationDecision(
+                decision="stop",
+                rationale="The robustness check rejected the candidate.",
+                suggested_edit="Fix the robustness issues before previewing or scripting a launch.",
+                suggested_patch="Rework the reward to reduce hacking risk or better align it with the task state structure.",
+                confidence=0.97,
+            )
         if not state.previewed:
             return OrchestrationDecision(
                 decision="preview_launch",
@@ -180,6 +203,7 @@ class OpenAIOrchestrationPolicy:
                     "enum": [
                         "stop",
                         "validate_reward_candidate",
+                        "assess_reward_robustness",
                         "preview_launch",
                         "write_launch_script",
                     ],
@@ -274,6 +298,10 @@ class OpenAIOrchestrationPolicy:
             "reward_entrypoint": state.reward_entrypoint,
             "validated": state.validated,
             "valid": state.valid,
+            "robustness_checked": state.robustness_checked,
+            "robustness_rejected": state.robustness_rejected,
+            "robustness_score": state.robustness_score,
+            "robustness_risk": state.robustness_risk,
             "previewed": state.previewed,
             "scripted": state.scripted,
             "current_step": state.current_step,
@@ -314,6 +342,7 @@ class AgenticOrchestrator:
         )
         steps: List[OrchestrationStep] = []
         reward_candidate_record: Optional[Dict[str, Any]] = manifest.reward_candidate
+        robustness_assessment_record: Optional[Dict[str, Any]] = None
         notes: Optional[str] = None
 
         while state.current_step < state.max_steps:
@@ -327,6 +356,15 @@ class AgenticOrchestrator:
                 reward_candidate_record = result.payload.get("reward_candidate")
                 state.validated = True
                 state.valid = result.payload.get("valid")
+            elif decision.decision == "assess_reward_robustness":
+                result = self._assess_reward_robustness(state)
+                robustness_assessment_record = result.payload.get("robustness_assessment")
+                state.robustness_checked = True
+                state.robustness_rejected = bool(result.payload.get("should_reject"))
+                state.robustness_score = result.payload.get("overall_score")
+                state.robustness_risk = result.payload.get("risk_level")
+                if state.robustness_rejected:
+                    notes = result.message or notes
             elif decision.decision == "preview_launch":
                 result = self._preview_launch(runner, manifest, run_dir, launch_target)
                 state.previewed = True
@@ -349,10 +387,21 @@ class AgenticOrchestrator:
                 notes = decision.suggested_edit
             state.current_step += 1
 
-        final_status = "completed" if state.reward_candidate_path and state.valid is not False and state.scripted else "stopped"
+        final_status = (
+            "completed"
+            if state.reward_candidate_path
+            and state.valid is not False
+            and state.robustness_checked
+            and not state.robustness_rejected
+            and state.scripted
+            else "stopped"
+        )
         if state.reward_candidate_path is None:
             final_status = "idle"
             notes = notes or "No reward candidate provided."
+        elif state.robustness_rejected:
+            final_status = "stopped"
+            notes = notes or "Reward candidate rejected by robustness assessment."
 
         return OrchestrationTrace(
             manifest=manifest,
@@ -361,6 +410,7 @@ class AgenticOrchestrator:
             status=final_status,
             steps=steps,
             reward_candidate=reward_candidate_record,
+            robustness_assessment=robustness_assessment_record,
             notes=notes,
         )
 
@@ -390,6 +440,30 @@ class AgenticOrchestrator:
                 "issues": validation.to_dict()["issues"],
             },
             message="Reward candidate validated successfully." if validation.valid else "Reward candidate invalid.",
+        )
+
+    def _assess_reward_robustness(self, state: OrchestrationState) -> OrchestrationToolResult:
+        if state.reward_candidate_path is None:
+            return OrchestrationToolResult(
+                tool_name="assess_reward_robustness",
+                status="skipped",
+                message="No reward candidate path provided.",
+            )
+
+        assessment = RewardRobustnessAnalyzer().assess_file(
+            state.reward_candidate_path,
+            entrypoint=state.reward_entrypoint,
+        )
+        return OrchestrationToolResult(
+            tool_name="assess_reward_robustness",
+            status="assessed",
+            payload={
+                "overall_score": assessment.overall_score,
+                "risk_level": assessment.risk_level,
+                "should_reject": assessment.should_reject,
+                "robustness_assessment": assessment.to_dict(),
+            },
+            message=assessment.summary,
         )
 
     def _preview_launch(

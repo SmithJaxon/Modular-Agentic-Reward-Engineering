@@ -13,8 +13,10 @@ from .orchestration import AgenticOrchestrator
 from .reward_candidate import RewardCandidateLoader, RewardCandidateValidator
 from .reward_patch import RewardPatchRecommender
 from .project import load_project_context
+from .robustness import RewardRobustnessAnalyzer
 from .registry import list_baseline_presets, validate_registry
 from .runtime import load_experiment_spec, spec_from_preset
+from .sweep import SweepPlanner
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -123,6 +125,61 @@ def build_parser() -> argparse.ArgumentParser:
     reward_patch_source.add_argument("--path", type=Path)
     reward_patch_source.add_argument("--trace", type=Path)
     reward_patch_parser.add_argument("--entrypoint", default="compute_reward")
+
+    robustness_parser = subparsers.add_parser(
+        "reward-robustness",
+        aliases=["reward_robustness"],
+        help="Run lightweight robustness checks for a reward candidate",
+    )
+    robustness_source = robustness_parser.add_mutually_exclusive_group(required=True)
+    robustness_source.add_argument("--path", type=Path)
+    robustness_source.add_argument("--trace", type=Path)
+    robustness_parser.add_argument("--entrypoint", default="compute_reward")
+
+    summary_parser = subparsers.add_parser(
+        "run-summary",
+        aliases=["trace-summary"],
+        help="Print a combined orchestration and robustness summary for a trace",
+    )
+    summary_parser.add_argument("--trace", required=True, type=Path)
+
+    sweep_parser = subparsers.add_parser(
+        "sweep-plan",
+        help="Build a cheap future VM sweep plan from a config, preset, or trace",
+    )
+    sweep_source = sweep_parser.add_mutually_exclusive_group(required=True)
+    sweep_source.add_argument("--config", type=Path)
+    sweep_source.add_argument("--preset", choices=["cartpole", "humanoid", "allegro_hand"])
+    sweep_source.add_argument("--trace", type=Path)
+    sweep_parser.add_argument("--run-dir", type=Path, default=None)
+    sweep_parser.add_argument("--kind", default="gpu_vm")
+    sweep_parser.add_argument("--python", dest="python_executable", default="python3")
+    sweep_parser.add_argument("--reward-candidate", type=Path, default=None)
+    sweep_parser.add_argument("--reward-entrypoint", default="compute_reward")
+    sweep_parser.add_argument("--max-runs", type=int, default=3)
+
+    compare_parser = subparsers.add_parser(
+        "compare-report",
+        aliases=["phase5-report"],
+        help="Print a combined Phase 5 report from a trace and optional sweep plan",
+    )
+    compare_parser.add_argument("--trace", required=True, type=Path)
+    compare_parser.add_argument("--sweep-plan", type=Path, default=None)
+
+    brief_parser = subparsers.add_parser(
+        "review-brief",
+        aliases=["phase5-brief"],
+        help="Print a human-readable Phase 5 review brief",
+    )
+    brief_parser.add_argument("--trace", required=True, type=Path)
+    brief_parser.add_argument("--sweep-plan", type=Path, default=None)
+
+    status_parser = subparsers.add_parser(
+        "phase5-status",
+        help="Print a one-line Phase 5 readiness status",
+    )
+    status_parser.add_argument("--trace", required=True, type=Path)
+    status_parser.add_argument("--sweep-plan", type=Path, default=None)
 
     orchestrate_parser = subparsers.add_parser(
         "orchestrate",
@@ -399,6 +456,101 @@ def _recommend_reward_patch(path: Optional[Path], trace: Optional[Path], entrypo
     return 0
 
 
+def _reward_robustness(path: Optional[Path], trace: Optional[Path], entrypoint: str) -> int:
+    analyzer = RewardRobustnessAnalyzer()
+    if trace is not None:
+        assessment = analyzer.assess_trace(trace)
+    elif path is not None:
+        assessment = analyzer.assess_file(path, entrypoint=entrypoint)
+    else:
+        raise ValueError("Either path or trace must be provided")
+    print(json.dumps(assessment.to_dict(), indent=2, sort_keys=True))
+    return 0 if not assessment.should_reject else 1
+
+
+def _run_summary(trace: Path) -> int:
+    analyzer = RewardRobustnessAnalyzer()
+    summary = analyzer.summarize_trace(trace)
+    print(json.dumps(summary.to_dict(), indent=2, sort_keys=True))
+    return 0
+
+
+def _sweep_plan(
+    config: Optional[Path],
+    preset: Optional[str],
+    trace: Optional[Path],
+    run_dir: Optional[Path],
+    kind: str,
+    python_executable: str,
+    reward_candidate: Optional[Path],
+    reward_entrypoint: str,
+    max_runs: int,
+) -> int:
+    context = load_project_context()
+    runner = ExperimentRunner(context.paths)
+    planner = SweepPlanner(runner=runner)
+
+    if trace is not None:
+        plan = planner.build_from_trace(
+            trace,
+            base_run_dir=run_dir,
+            launch_target=LaunchTarget(
+                kind=kind,
+                python_executable=python_executable,
+                working_directory=context.config.project_root,
+                gpu_required=True,
+                environment_variables={},
+            ),
+            max_runs=max_runs,
+        )
+        resolved_run_dir = run_dir if run_dir is not None else trace.parent
+    else:
+        manifest = _load_manifest_from_args(config, preset)
+        manifest.reward_candidate = _load_reward_candidate_metadata(reward_candidate, reward_entrypoint)
+        resolved_run_dir = _resolve_run_dir(context.paths.runs, run_dir, manifest)
+        resolved_run_dir.mkdir(parents=True, exist_ok=True)
+        plan = planner.build_from_manifest(
+            manifest=manifest,
+            base_run_dir=resolved_run_dir,
+            launch_target=LaunchTarget(
+                kind=kind,
+                python_executable=python_executable,
+                working_directory=context.config.project_root,
+                gpu_required=True,
+                environment_variables={},
+            ),
+            reward_candidate_path=reward_candidate,
+            reward_entrypoint=reward_entrypoint,
+            max_runs=max_runs,
+        )
+
+    plan_path = plan.write(resolved_run_dir / "sweep_plan.json")
+    print(str(plan_path))
+    print(json.dumps(plan.to_dict(), indent=2, sort_keys=True))
+    return 0
+
+
+def _compare_report(trace: Path, sweep_plan: Optional[Path]) -> int:
+    analyzer = RewardRobustnessAnalyzer()
+    report = analyzer.compare_trace_with_sweep(trace, sweep_plan_path=sweep_plan)
+    print(json.dumps(report.to_dict(), indent=2, sort_keys=True))
+    return 0
+
+
+def _review_brief(trace: Path, sweep_plan: Optional[Path]) -> int:
+    analyzer = RewardRobustnessAnalyzer()
+    brief = analyzer.build_review_brief(trace, sweep_plan_path=sweep_plan)
+    print(brief.to_text(), end="")
+    return 0
+
+
+def _phase5_status(trace: Path, sweep_plan: Optional[Path]) -> int:
+    analyzer = RewardRobustnessAnalyzer()
+    status = analyzer.build_readiness_status(trace, sweep_plan_path=sweep_plan)
+    print("{0}: {1}".format(status.label, status.detail))
+    return 0
+
+
 def _orchestrate_run(
     config: Optional[Path],
     preset: Optional[str],
@@ -471,6 +623,28 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         return _load_reward_candidate(args.path, args.entrypoint)
     if args.command == "recommend-reward-patch":
         return _recommend_reward_patch(args.path, args.trace, args.entrypoint)
+    if args.command in {"reward-robustness", "reward_robustness"}:
+        return _reward_robustness(args.path, args.trace, args.entrypoint)
+    if args.command in {"run-summary", "trace-summary"}:
+        return _run_summary(args.trace)
+    if args.command == "sweep-plan":
+        return _sweep_plan(
+            args.config,
+            args.preset,
+            args.trace,
+            args.run_dir,
+            args.kind,
+            args.python_executable,
+            args.reward_candidate,
+            args.reward_entrypoint,
+            args.max_runs,
+        )
+    if args.command in {"compare-report", "phase5-report"}:
+        return _compare_report(args.trace, args.sweep_plan)
+    if args.command in {"review-brief", "phase5-brief"}:
+        return _review_brief(args.trace, args.sweep_plan)
+    if args.command == "phase5-status":
+        return _phase5_status(args.trace, args.sweep_plan)
     if args.command == "orchestrate":
         return _orchestrate_run(
             args.config,
