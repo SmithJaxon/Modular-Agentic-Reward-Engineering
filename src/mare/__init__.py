@@ -3,5 +3,7 @@
 __all__ = [
     "config",
     "reward_candidate",
+    "reward_patch",
+    "orchestration",
     "experiment",
 ]

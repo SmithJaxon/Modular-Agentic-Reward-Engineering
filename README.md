@@ -42,5 +42,9 @@ Commands:
 - `mare script --config configs/example_experiment.yaml`
 - `mare reward-validate --path reward_candidates/cartpole_reward.py`
 - `mare reward-load --path reward_candidates/cartpole_reward.py`
+- `mare recommend-reward-patch --path reward_candidates/cartpole_reward.py`
+- `mare recommend-reward-patch --trace runs/cartpole_baseline_dry_run/orchestration.json`
+- `mare orchestrate --config configs/example_experiment.yaml --reward-candidate reward_candidates/cartpole_reward.py`
 
 Reward candidates are Python modules with a required `compute_reward(observation, action, info)` function.
+The `orchestrate` command currently uses a local heuristic policy and writes `orchestration.json` as the loop trace.

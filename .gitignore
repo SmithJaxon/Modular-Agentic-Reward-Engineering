@@ -17,6 +17,14 @@ __pycache__/
 .venv/
 venv/
 
+# Experiment outputs
+runs/*
+!runs/.gitkeep
+logs/*
+!logs/.gitkeep
+artifacts/*
+!artifacts/.gitkeep
+
 # LaTeX build artifacts
 *.aux
 *.bbl

@@ -9,7 +9,9 @@ from .experiment import ExperimentRunner
 from .execution import PPORunDispatcher
 from .manifest import ExperimentManifest
 from .launch import LaunchTarget
+from .orchestration import AgenticOrchestrator
 from .reward_candidate import RewardCandidateLoader, RewardCandidateValidator
+from .reward_patch import RewardPatchRecommender
 from .project import load_project_context
 from .registry import list_baseline_presets, validate_registry
 from .runtime import load_experiment_spec, spec_from_preset
@@ -111,6 +113,35 @@ def build_parser() -> argparse.ArgumentParser:
     )
     reward_load_parser.add_argument("--path", required=True, type=Path)
     reward_load_parser.add_argument("--entrypoint", default="compute_reward")
+
+    reward_patch_parser = subparsers.add_parser(
+        "recommend-reward-patch",
+        aliases=["recommend_reward_patch"],
+        help="Print a unified diff with a heuristic reward patch recommendation",
+    )
+    reward_patch_source = reward_patch_parser.add_mutually_exclusive_group(required=True)
+    reward_patch_source.add_argument("--path", type=Path)
+    reward_patch_source.add_argument("--trace", type=Path)
+    reward_patch_parser.add_argument("--entrypoint", default="compute_reward")
+
+    orchestrate_parser = subparsers.add_parser(
+        "orchestrate",
+        help="Run the tool-driven reward orchestration loop",
+    )
+    orchestrate_source = orchestrate_parser.add_mutually_exclusive_group(required=True)
+    orchestrate_source.add_argument("--config", type=Path)
+    orchestrate_source.add_argument("--preset", choices=["cartpole", "humanoid", "allegro_hand"])
+    orchestrate_parser.add_argument("--run-dir", type=Path, default=None)
+    orchestrate_parser.add_argument("--kind", default="gpu_vm")
+    orchestrate_parser.add_argument("--python", dest="python_executable", default="python3")
+    orchestrate_parser.add_argument("--reward-candidate", type=Path, default=None)
+    orchestrate_parser.add_argument("--reward-entrypoint", default="compute_reward")
+    orchestrate_parser.add_argument(
+        "--policy",
+        choices=["auto", "heuristic", "openai"],
+        default="auto",
+        help="Decision policy for the orchestration loop",
+    )
 
     return parser
 
@@ -343,6 +374,79 @@ def _load_reward_candidate(path: Path, entrypoint: str) -> int:
     return 0
 
 
+def _recommend_reward_patch(path: Optional[Path], trace: Optional[Path], entrypoint: str) -> int:
+    recommender = RewardPatchRecommender()
+    if trace is not None:
+        recommendation = recommender.recommend_from_trace(trace)
+    elif path is not None:
+        recommendation = recommender.recommend(path, entrypoint=entrypoint)
+    else:
+        raise ValueError("Either path or trace must be provided")
+    print(json.dumps(
+        {
+            "path": str(recommendation.path),
+            "summary": recommendation.summary,
+            "valid": recommendation.valid,
+            "trace_path": str(recommendation.trace_path) if recommendation.trace_path else None,
+            "latest_step": recommendation.latest_step,
+            "trace_context": recommendation.trace_context.to_dict() if recommendation.trace_context else None,
+        },
+        indent=2,
+        sort_keys=True,
+    ))
+    if recommendation.diff:
+        print(recommendation.diff)
+    return 0
+
+
+def _orchestrate_run(
+    config: Optional[Path],
+    preset: Optional[str],
+    run_dir: Optional[Path],
+    kind: str,
+    python_executable: str,
+    reward_candidate: Optional[Path],
+    reward_entrypoint: str,
+    policy_name: str,
+) -> int:
+    context = load_project_context()
+    runner = ExperimentRunner(context.paths)
+    manifest = _load_manifest_from_args(config, preset)
+    manifest.reward_candidate = _load_reward_candidate_metadata(reward_candidate, reward_entrypoint)
+    resolved_run_dir = _resolve_run_dir(context.paths.runs, run_dir, manifest)
+    resolved_run_dir.mkdir(parents=True, exist_ok=True)
+    runner.save_manifest(resolved_run_dir, manifest)
+    launch_target = LaunchTarget(
+        kind=kind,
+        python_executable=python_executable,
+        working_directory=context.config.project_root,
+        gpu_required=True,
+        environment_variables={},
+    )
+    if policy_name == "heuristic":
+        from .orchestration import HeuristicOrchestrationPolicy
+
+        policy = HeuristicOrchestrationPolicy()
+    elif policy_name == "openai":
+        from .orchestration import OpenAIOrchestrationPolicy
+
+        policy = OpenAIOrchestrationPolicy()
+    else:
+        policy = None
+    orchestrator = AgenticOrchestrator(runner=runner, policy=policy)
+    trace = orchestrator.run(
+        manifest=manifest,
+        run_dir=resolved_run_dir,
+        launch_target=launch_target,
+        reward_candidate_path=reward_candidate,
+        reward_entrypoint=reward_entrypoint,
+    )
+    trace_path = trace.write(resolved_run_dir / "orchestration.json")
+    print(str(trace_path))
+    print(json.dumps(trace.to_dict(), indent=2, sort_keys=True))
+    return 0
+
+
 def main(argv: Optional[Iterable[str]] = None) -> int:
     parser = build_parser()
     args = parser.parse_args(list(argv) if argv is not None else None)
@@ -365,6 +469,19 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
         return _validate_reward_candidate(args.path, args.entrypoint)
     if args.command == "reward-load":
         return _load_reward_candidate(args.path, args.entrypoint)
+    if args.command == "recommend-reward-patch":
+        return _recommend_reward_patch(args.path, args.trace, args.entrypoint)
+    if args.command == "orchestrate":
+        return _orchestrate_run(
+            args.config,
+            args.preset,
+            args.run_dir,
+            args.kind,
+            args.python_executable,
+            args.reward_candidate,
+            args.reward_entrypoint,
+            args.policy,
+        )
 
     parser.error("Unknown command")
     return 2
