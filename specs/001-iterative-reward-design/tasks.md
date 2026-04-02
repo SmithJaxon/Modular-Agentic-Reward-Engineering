@@ -31,14 +31,14 @@ headers, function/method headers, and dead-code cleanup.
 
 **Purpose**: Initialize project skeleton, quality tooling, and repeatable local verification.
 
-- [ ] T001 Create package scaffolding and module init files in `src/rewardlab/__init__.py`, `src/rewardlab/cli/__init__.py`, `src/rewardlab/orchestrator/__init__.py`, `src/rewardlab/llm/__init__.py`, `src/rewardlab/experiments/__init__.py`, `src/rewardlab/experiments/backends/__init__.py`, `src/rewardlab/feedback/__init__.py`, `src/rewardlab/selection/__init__.py`, `src/rewardlab/persistence/__init__.py`, `src/rewardlab/schemas/__init__.py`, and `src/rewardlab/utils/__init__.py`
-- [ ] T002 Initialize dependency and project metadata in `pyproject.toml`
-- [ ] T003 Configure linting, formatting, typing, and pytest tooling in `pyproject.toml`
-- [ ] T004 [P] Configure test discovery and markers in `pytest.ini`
-- [ ] T005 [P] Add runtime environment variable template in `.env.example`
-- [ ] T006 [P] Implement contract/schema validation utility in `tools/quality/validate_contracts.py`
-- [ ] T007 [P] Implement file-header and docstring audit utility in `tools/quality/check_headers.py`
-- [ ] T008 [P] Create deterministic objective and reward fixture seeds in `tools/fixtures/objectives/cartpole.txt` and `tools/fixtures/rewards/cartpole_baseline.py`
+- [x] T001 Create package scaffolding and module init files in `src/rewardlab/__init__.py`, `src/rewardlab/cli/__init__.py`, `src/rewardlab/orchestrator/__init__.py`, `src/rewardlab/llm/__init__.py`, `src/rewardlab/experiments/__init__.py`, `src/rewardlab/experiments/backends/__init__.py`, `src/rewardlab/feedback/__init__.py`, `src/rewardlab/selection/__init__.py`, `src/rewardlab/persistence/__init__.py`, `src/rewardlab/schemas/__init__.py`, and `src/rewardlab/utils/__init__.py`
+- [x] T002 Initialize dependency and project metadata in `pyproject.toml`
+- [x] T003 Configure linting, formatting, typing, and pytest tooling in `pyproject.toml`
+- [x] T004 [P] Configure test discovery and markers in `pytest.ini`
+- [x] T005 [P] Add runtime environment variable template in `.env.example`
+- [x] T006 [P] Implement contract/schema validation utility in `tools/quality/validate_contracts.py`
+- [x] T007 [P] Implement file-header and docstring audit utility in `tools/quality/check_headers.py`
+- [x] T008 [P] Create deterministic objective and reward fixture seeds in `tools/fixtures/objectives/cartpole.txt` and `tools/fixtures/rewards/cartpole_baseline.py`
 
 ---
 

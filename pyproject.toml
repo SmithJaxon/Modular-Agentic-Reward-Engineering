@@ -1,0 +1,73 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rewardlab"
+version = "0.1.0"
+description = "LLM-guided reward function iteration toolkit for reinforcement learning experiments."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "Proprietary" }
+authors = [{ name = "Advanced AI Project" }]
+dependencies = [
+  "openai>=1.40,<2.0",
+  "pydantic>=2.8,<3.0",
+  "typer>=0.12,<1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "hypothesis>=6.112,<7.0",
+  "jsonschema>=4.23,<5.0",
+  "mypy>=1.11,<2.0",
+  "pytest>=8.3,<9.0",
+  "pytest-cov>=5.0,<6.0",
+  "pytest-xdist>=3.6,<4.0",
+  "ruff>=0.6,<1.0",
+]
+gymnasium = ["gymnasium>=0.29,<1.0"]
+torch = ["torch>=2.4,<3.0"]
+isaacgym = []
+
+[project.scripts]
+rewardlab = "rewardlab.cli.app:main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests", "tools"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.ruff.lint]
+select = ["B", "E", "F", "I", "N", "PTH", "S", "SIM", "UP"]
+ignore = ["S101"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S101"]
+
+[tool.mypy]
+python_version = "3.12"
+packages = ["rewardlab"]
+mypy_path = ["src"]
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+strict_equality = true
+pretty = true
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = "-ra"

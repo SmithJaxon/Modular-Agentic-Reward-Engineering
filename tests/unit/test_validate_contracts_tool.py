@@ -1,5 +1,5 @@
-"""Tests for the contract validation utility.
-
+"""
+Summary: Tests for the contract validation utility.
 Created: 2026-04-02
 Last Updated: 2026-04-02
 """

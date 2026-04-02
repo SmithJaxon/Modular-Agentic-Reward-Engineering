@@ -1,0 +1,3 @@
+Balance the pole upright while keeping the cart near the center with smooth,
+stable control. Penalize large pole angles, excessive cart drift, and abrupt
+actions that reduce stability over time.

@@ -1,4 +1,8 @@
-"""Tests for the Python header and routine docstring audit utility."""
+"""
+Summary: Tests for the Python header and routine docstring audit utility.
+Created: 2026-04-02
+Last Updated: 2026-04-02
+"""
 
 from __future__ import annotations
 
