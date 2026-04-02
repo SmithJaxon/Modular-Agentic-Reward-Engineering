@@ -1,4 +1,4 @@
-﻿# Contract: Orchestrator CLI
+# Contract: Orchestrator CLI
 
 ## Overview
 
@@ -53,6 +53,13 @@ Pauses an active session explicitly.
 Required arguments:
 - `--session-id <id>`
 
+Optional arguments:
+- `--json`
+
+Success response fields:
+- `session_id`
+- `status`
+
 ### `rewardlab session resume`
 
 Resumes a paused session.
@@ -60,12 +67,22 @@ Resumes a paused session.
 Required arguments:
 - `--session-id <id>`
 
+Optional arguments:
+- `--json`
+
+Success response fields:
+- `session_id`
+- `status`
+
 ### `rewardlab session stop`
 
 Interrupts a running session and returns best-known candidate.
 
 Required arguments:
 - `--session-id <id>`
+
+Optional arguments:
+- `--json`
 
 Success response fields:
 - `session_id`
@@ -85,6 +102,12 @@ Required arguments:
 Optional arguments:
 - `--score <float>`
 - `--artifact-ref <path-or-uri>`
+- `--json`
+
+Success response fields:
+- `feedback_id`
+- `source_type`
+- `comment`
 
 ### `rewardlab feedback request-peer`
 
@@ -94,6 +117,9 @@ Required arguments:
 - `--session-id <id>`
 - `--candidate-id <id>`
 
+Optional arguments:
+- `--json`
+
 Success response fields:
 - `feedback_id`
 - `source_type`
@@ -101,19 +127,28 @@ Success response fields:
 
 ### `rewardlab session report`
 
-Exports final or intermediate session report.
+Exports a JSON report for an existing non-running session state.
 
 Required arguments:
 - `--session-id <id>`
 
 Optional arguments:
-- `--format <json|markdown>`
-- `--output <path>`
+- `--json`
+
+Success response fields:
+- `session_id`
+- `stop_reason`
+- `best_candidate_id`
+- `report_path`
+
+Notes:
+- `session report` is intended for paused, interrupted, completed, or failed
+  sessions.
+- The report file written by the current implementation is JSON at
+  `reports/<session-id>.report.json`.
 
 ## Error Contract
 
-Errors MUST include:
-- `error_code` (stable string)
-- `message` (human-readable)
-- `retryable` (boolean)
-- `context` (optional object)
+Command failures currently surface as standard CLI failures with a non-zero exit
+status and a human-readable error message. Structured JSON error payloads are
+not part of the implemented v1 CLI contract.

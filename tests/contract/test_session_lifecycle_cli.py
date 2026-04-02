@@ -109,3 +109,18 @@ def test_session_start_step_and_stop_contract(monkeypatch, tmp_path: Path) -> No
         "stop_reason",
     }
     assert Path(stop_payload["report_path"]).exists()
+
+    report_result = runner.invoke(
+        app,
+        ["session", "report", "--session-id", session_id, "--json"],
+    )
+
+    assert report_result.exit_code == 0, report_result.stdout
+    report_payload = json.loads(report_result.stdout)
+    assert set(report_payload) == {
+        "best_candidate_id",
+        "report_path",
+        "session_id",
+        "stop_reason",
+    }
+    assert Path(report_payload["report_path"]).exists()

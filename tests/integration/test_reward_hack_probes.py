@@ -37,7 +37,7 @@ class FakeEnvironment:
         """Close the fake environment handle."""
 
 
-def test_reward_hack_probe_matrix_flags_risk_and_penalizes_selection(tmp_path: Path) -> None:
+def test_reward_hack_probe_matrix_flags_risk_and_penalizes_selection() -> None:
     """Probe execution should produce a high-risk assessment when variants collapse."""
 
     reward_by_environment = {

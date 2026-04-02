@@ -15,7 +15,12 @@ from pathlib import Path
 def load_validator_module():
     """Load the validator module directly from its file path."""
 
-    module_path = Path(__file__).resolve().parents[2] / "tools" / "quality" / "validate_contracts.py"
+    module_path = (
+        Path(__file__).resolve().parents[2]
+        / "tools"
+        / "quality"
+        / "validate_contracts.py"
+    )
     spec = importlib.util.spec_from_file_location("validate_contracts", module_path)
     assert spec is not None
     assert spec.loader is not None

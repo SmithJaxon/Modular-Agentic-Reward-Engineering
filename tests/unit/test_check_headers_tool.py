@@ -11,7 +11,6 @@ from pathlib import Path
 
 import pytest
 
-
 TOOL_PATH = Path(__file__).resolve().parents[2] / "tools" / "quality" / "check_headers.py"
 
 
@@ -34,7 +33,10 @@ def write_file(path: Path, content: str) -> Path:
     return path
 
 
-def test_audit_reports_missing_module_header_and_routine_docstring(tmp_path: Path, tool_module) -> None:
+def test_audit_reports_missing_module_header_and_routine_docstring(
+    tmp_path: Path,
+    tool_module,
+) -> None:
     """The tool should flag missing module headers and missing docstrings."""
 
     target = write_file(
@@ -53,7 +55,10 @@ def useful(value):
     assert "MISSING_ROUTINE_DOCSTRING" in codes
 
 
-def test_audit_accepts_valid_module_header_and_trivial_helpers(tmp_path: Path, tool_module) -> None:
+def test_audit_accepts_valid_module_header_and_trivial_helpers(
+    tmp_path: Path,
+    tool_module,
+) -> None:
     """The tool should allow valid headers and trivial routines without docstrings."""
 
     target = write_file(
@@ -84,7 +89,10 @@ def documented(value):
     assert issues == []
 
 
-def test_collect_python_files_accepts_directories_and_files(tmp_path: Path, tool_module) -> None:
+def test_collect_python_files_accepts_directories_and_files(
+    tmp_path: Path,
+    tool_module,
+) -> None:
     """The path collector should expand directories and deduplicate results."""
 
     root = tmp_path / "pkg"

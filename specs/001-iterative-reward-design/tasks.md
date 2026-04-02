@@ -154,14 +154,14 @@ headers, function/method headers, and dead-code cleanup.
 
 **Purpose**: Final verification hardening, cleanup, and evidence capture.
 
-- [ ] T058 [P] Update operator documentation and examples in `README.md` and `specs/001-iterative-reward-design/quickstart.md`
-- [ ] T059 Implement one-command validation runner in `tools/quality/run_full_validation.ps1`
-- [ ] T060 [P] Implement end-to-end cycle-time budget test in `tests/e2e/test_iteration_cycle_budget.py`
-- [ ] T061 [P] Implement schema contract regression tests in `tests/unit/test_schema_contracts.py`
-- [ ] T062 [P] Implement header/docstring audit tests in `tests/unit/test_header_audit.py`
-- [ ] T063 Run mandatory dead-code cleanup pass for `src/rewardlab/` and `tests/`
-- [ ] T064 Execute full quality gate and record evidence in `specs/001-iterative-reward-design/verification-report.md`
-- [ ] T065 Update completion notes and compliance status in `specs/001-iterative-reward-design/checklists/requirements.md`
+- [x] T058 [P] Update operator documentation and examples in `README.md` and `specs/001-iterative-reward-design/quickstart.md`
+- [x] T059 Implement one-command validation runner in `tools/quality/run_full_validation.ps1`
+- [x] T060 [P] Implement end-to-end cycle-time budget test in `tests/e2e/test_iteration_cycle_budget.py`
+- [x] T061 [P] Implement schema contract regression tests in `tests/unit/test_schema_contracts.py`
+- [x] T062 [P] Implement header/docstring audit tests in `tests/unit/test_header_audit.py`
+- [x] T063 Run mandatory dead-code cleanup pass for `src/rewardlab/` and `tests/`
+- [x] T064 Execute full quality gate and record evidence in `specs/001-iterative-reward-design/verification-report.md`
+- [x] T065 Update completion notes and compliance status in `specs/001-iterative-reward-design/checklists/requirements.md`
 
 ---
 
