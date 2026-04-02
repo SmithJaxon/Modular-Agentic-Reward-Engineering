@@ -85,6 +85,8 @@ Copy-Item .env.example .env
 Populate `OPENAI_API_KEY` in `.env`. Live peer feedback uses the low-cost
 `gpt-5-nano` model with a single short critique prompt. If no key is present,
 RewardLab stays offline and uses the deterministic fallback path instead.
+RewardLab auto-loads the nearest local `.env` file from the current working
+directory upward, while process environment variables still take precedence.
 
 ## Quality Gate
 

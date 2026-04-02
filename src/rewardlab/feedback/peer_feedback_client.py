@@ -11,6 +11,11 @@ from datetime import UTC, datetime
 from rewardlab.llm.openai_client import ChatCompletionRequest, ChatMessage, OpenAIClient
 from rewardlab.schemas.feedback_entry import FeedbackEntry, FeedbackSourceType
 
+FALLBACK_PEER_COMMENT = (
+    "Peer review: the reward structure appears aligned overall, "
+    "but edge-case robustness should still be checked."
+)
+
 
 class PeerFeedbackClient:
     """Generate peer feedback with an injected model client or deterministic fallback."""
@@ -37,10 +42,7 @@ class PeerFeedbackClient:
                 reward_definition=reward_definition,
             )
         else:
-            comment = (
-                "Peer review: the reward structure appears aligned overall, "
-                "but edge-case robustness should still be checked."
-            )
+            comment = FALLBACK_PEER_COMMENT
 
         score = 0.85 if (aggregate_score or 0.0) >= 1.0 else 0.4
         return FeedbackEntry(
@@ -73,10 +75,13 @@ class PeerFeedbackClient:
                     ),
                 ),
                 reasoning_effort="minimal",
-                max_tokens=120,
+                max_tokens=256,
             )
         )
-        return response.content.strip()
+        comment = response.content.strip()
+        if not comment:
+            return FALLBACK_PEER_COMMENT
+        return comment
 
 
 def _feedback_id(session_id: str, source_type: FeedbackSourceType) -> str:

@@ -6,10 +6,10 @@ Last Updated: 2026-04-02
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from uuid import uuid4
 
 from rewardlab.feedback.demo_artifacts import DemoArtifactTracker
 from rewardlab.feedback.gating import FeedbackGateEvaluator
@@ -34,6 +34,7 @@ from rewardlab.schemas.session_config import (
     StopReason,
 )
 from rewardlab.selection.policy import CandidateSelectionPolicy
+from rewardlab.utils.env import load_runtime_environment
 
 SESSION_CANDIDATES_NAMESPACE = "session_candidates"
 SESSION_FEEDBACK_NAMESPACE = "session_feedback"
@@ -54,15 +55,12 @@ class ServicePaths:
     def from_environment(cls) -> ServicePaths:
         """Build runtime paths from environment variables with local defaults."""
 
-        data_dir = Path(os.getenv("REWARDLAB_DATA_DIR", ".rewardlab"))
-        database_path = Path(
-            os.getenv("REWARDLAB_DB_PATH", str(data_dir / "metadata.sqlite3"))
-        )
-        event_log_dir = Path(os.getenv("REWARDLAB_EVENT_LOG_DIR", str(data_dir / "events")))
-        checkpoint_dir = Path(
-            os.getenv("REWARDLAB_CHECKPOINT_DIR", str(data_dir / "checkpoints"))
-        )
-        report_dir = Path(os.getenv("REWARDLAB_REPORT_DIR", str(data_dir / "reports")))
+        env = load_runtime_environment()
+        data_dir = Path(env.get("REWARDLAB_DATA_DIR", ".rewardlab"))
+        database_path = Path(env.get("REWARDLAB_DB_PATH", str(data_dir / "metadata.sqlite3")))
+        event_log_dir = Path(env.get("REWARDLAB_EVENT_LOG_DIR", str(data_dir / "events")))
+        checkpoint_dir = Path(env.get("REWARDLAB_CHECKPOINT_DIR", str(data_dir / "checkpoints")))
+        report_dir = Path(env.get("REWARDLAB_REPORT_DIR", str(data_dir / "reports")))
         return cls(
             data_dir=data_dir,
             database_path=database_path,
@@ -203,6 +201,14 @@ class SessionService:
             },
         )
         actual_session_id = session_id or _default_session_id()
+        existing_session = self.repository.get_session(actual_session_id)
+        if existing_session is not None:
+            return self._reuse_existing_session_start(
+                session=existing_session,
+                config=config,
+                baseline_reward=baseline_reward,
+            )
+
         started_at = datetime.now(UTC)
         baseline_candidate = RewardCandidate(
             candidate_id=f"{actual_session_id}-candidate-000",
@@ -264,7 +270,7 @@ class SessionService:
             objective_text=objective_text,
             current_candidate=current_candidate,
         )
-        self._save_reflection(artifacts.reflection)
+        self._save_reflection(session_id, artifacts.reflection)
         self._save_candidate(artifacts.candidate)
         self.repository.append_event(
             session_id=session_id,
@@ -538,16 +544,76 @@ class SessionService:
             updated_at=candidate.created_at.isoformat(),
         )
 
-    def _save_reflection(self, reflection: ReflectionRecord) -> None:
-        """Persist a reflection record under the session reflection namespace."""
+    def _save_reflection(self, session_id: str, reflection: ReflectionRecord) -> None:
+        """Persist a reflection record under the explicit session reflection namespace."""
 
-        session_id = reflection.reflection_id.split("-reflection-")[0]
         self.repository.metadata_store.upsert_namespaced_item(
             namespace=_reflection_namespace(session_id),
             item_key=reflection.reflection_id,
             payload=reflection.model_dump(mode="json"),
             updated_at=reflection.created_at.isoformat(),
         )
+
+    def _reuse_existing_session_start(
+        self,
+        *,
+        session: SessionRecord,
+        config: SessionConfig,
+        baseline_reward: str,
+    ) -> StartedSession:
+        """Return the existing session when an idempotent start request is retried."""
+
+        self._validate_idempotent_start_request(
+            session=session,
+            config=config,
+            baseline_reward=baseline_reward,
+        )
+        if session.started_at is None:
+            raise ValueError(f"session {session.session_id!r} exists without started_at")
+        return StartedSession(
+            session_id=session.session_id,
+            status=session.status,
+            created_at=session.started_at,
+        )
+
+    def _validate_idempotent_start_request(
+        self,
+        *,
+        session: SessionRecord,
+        config: SessionConfig,
+        baseline_reward: str,
+    ) -> None:
+        """Ensure a repeated explicit session start matches the original session inputs."""
+
+        comparable_fields = (
+            session.objective_text == config.objective_text
+            and session.environment_id == config.environment_id
+            and session.environment_backend == config.environment_backend
+            and session.no_improve_limit == config.no_improve_limit
+            and session.max_iterations == config.max_iterations
+            and session.feedback_gate == config.feedback_gate
+        )
+        if not comparable_fields:
+            raise ValueError(
+                f"session {session.session_id!r} already exists with different configuration"
+            )
+
+        baseline_candidate = next(
+            (
+                candidate
+                for candidate in self.list_candidates(session.session_id)
+                if candidate.iteration_index == 0
+            ),
+            None,
+        )
+        if baseline_candidate is None:
+            raise ValueError(
+                f"session {session.session_id!r} exists without a baseline candidate"
+            )
+        if baseline_candidate.reward_definition != baseline_reward:
+            raise ValueError(
+                f"session {session.session_id!r} already exists with different baseline reward"
+            )
 
     def _save_feedback(self, session_id: str, feedback: FeedbackEntry) -> None:
         """Persist a feedback entry under the session feedback namespace."""
@@ -621,4 +687,5 @@ def _feedback_namespace(session_id: str) -> str:
 def _default_session_id() -> str:
     """Return a UTC timestamp-based session identifier."""
 
-    return datetime.now(UTC).strftime("session-%Y%m%d-%H%M%S")
+    timestamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S-%f")
+    return f"session-{timestamp}-{uuid4().hex[:8]}"

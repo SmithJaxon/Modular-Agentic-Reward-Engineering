@@ -29,6 +29,13 @@ Success response fields:
 - `status`
 - `created_at`
 
+Idempotency rules:
+- Repeating `session start` with the same explicit `--session-id` and the same
+  start inputs MUST return the existing session without creating duplicate
+  baseline artifacts or lifecycle events.
+- Reusing an existing explicit `--session-id` with different start inputs MUST
+  fail rather than mutate the existing session.
+
 ### `rewardlab session step`
 
 Executes one full iteration (evaluate, reflect, revise).

@@ -124,3 +124,49 @@ def test_session_start_step_and_stop_contract(monkeypatch, tmp_path: Path) -> No
         "stop_reason",
     }
     assert Path(report_payload["report_path"]).exists()
+
+
+def test_session_start_reuses_identical_explicit_session_id(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """An identical repeated start request should be idempotent for a client session id."""
+
+    configure_runtime_env(monkeypatch, tmp_path)
+    objective_file, baseline_reward_file = create_input_files(tmp_path)
+    runner = CliRunner()
+    args = [
+        "session",
+        "start",
+        "--objective-file",
+        str(objective_file),
+        "--baseline-reward-file",
+        str(baseline_reward_file),
+        "--environment-id",
+        "cartpole-v1",
+        "--environment-backend",
+        "gymnasium",
+        "--no-improve-limit",
+        "2",
+        "--max-iterations",
+        "4",
+        "--feedback-gate",
+        "none",
+        "--session-id",
+        "contract-idempotent-start",
+        "--json",
+    ]
+
+    first_result = runner.invoke(app, args)
+    second_result = runner.invoke(app, args)
+
+    assert first_result.exit_code == 0, first_result.stdout
+    assert second_result.exit_code == 0, second_result.stdout
+
+    first_payload = json.loads(first_result.stdout)
+    second_payload = json.loads(second_result.stdout)
+    assert first_payload == second_payload
+
+    event_log_path = tmp_path / ".rewardlab" / "events" / "events.jsonl"
+    event_lines = event_log_path.read_text(encoding="utf-8").splitlines()
+    assert len(event_lines) == 2

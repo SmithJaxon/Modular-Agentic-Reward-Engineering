@@ -17,6 +17,10 @@ Copy-Item .env.example .env
 # Then edit `.env` and set OPENAI_API_KEY=<your-api-key>
 ```
 
+RewardLab auto-loads the nearest local `.env` file from the working directory
+upward. If the same variable is set both in the shell and in `.env`, the shell
+value wins.
+
 ## 2. Install and Validate Tooling
 
 ```powershell

@@ -6,9 +6,10 @@ Last Updated: 2026-04-02
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol
+
+from rewardlab.utils.env import load_runtime_environment
 
 
 class SupportsChatCompletions(Protocol):
@@ -97,12 +98,13 @@ class OpenAIClient:
     def config_from_environment(cls) -> OpenAIClientConfig:
         """Load runtime credentials from environment variables."""
 
+        env = load_runtime_environment()
         return OpenAIClientConfig(
-            api_key=os.getenv("OPENAI_API_KEY"),
-            organization=os.getenv("OPENAI_ORG_ID") or os.getenv("OPENAI_ORGANIZATION"),
-            project=os.getenv("OPENAI_PROJECT"),
-            base_url=os.getenv("OPENAI_BASE_URL"),
-            timeout_seconds=_parse_timeout(os.getenv("OPENAI_TIMEOUT_SECONDS")),
+            api_key=env.get("OPENAI_API_KEY"),
+            organization=env.get("OPENAI_ORG_ID") or env.get("OPENAI_ORGANIZATION"),
+            project=env.get("OPENAI_PROJECT"),
+            base_url=env.get("OPENAI_BASE_URL"),
+            timeout_seconds=_parse_timeout(env.get("OPENAI_TIMEOUT_SECONDS")),
         )
 
     @property

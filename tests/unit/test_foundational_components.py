@@ -7,11 +7,12 @@ Last Updated: 2026-04-02
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
-from rewardlab.feedback.peer_feedback_client import PeerFeedbackClient
+from rewardlab.feedback.peer_feedback_client import FALLBACK_PEER_COMMENT, PeerFeedbackClient
 from rewardlab.llm.openai_client import (
     ChatCompletionRequest,
     ChatCompletionResponse,
@@ -19,6 +20,7 @@ from rewardlab.llm.openai_client import (
     OpenAIClient,
     OpenAIClientConfig,
 )
+from rewardlab.orchestrator.session_service import ServicePaths, _default_session_id
 from rewardlab.orchestrator.state_machine import TransitionRequest, apply_transition, can_transition
 from rewardlab.persistence.session_repository import RepositoryPaths, SessionRepository
 from rewardlab.schemas.session_config import (
@@ -324,7 +326,136 @@ def test_peer_feedback_client_uses_gpt5_nano_without_temperature_override() -> N
     assert captured_request is not None
     assert captured_request.model == "gpt-5-nano"
     assert captured_request.reasoning_effort == "minimal"
-    assert captured_request.max_tokens == 120
+    assert captured_request.max_tokens == 256
     assert captured_request.temperature is None
     assert feedback.comment == "Concise live critique."
     assert feedback.score == 0.85
+
+
+def test_peer_feedback_client_uses_fallback_when_live_response_is_blank() -> None:
+    """A blank model response should degrade to the deterministic peer fallback."""
+
+    class BlankOpenAIClient:
+        """Fake model client that returns only whitespace content."""
+
+        has_credentials = True
+
+        def chat_completion(
+            self,
+            request: ChatCompletionRequest,
+        ) -> ChatCompletionResponse:
+            """Return a blank completion while preserving the request contract."""
+
+            assert request.reasoning_effort == "minimal"
+            return ChatCompletionResponse(content="   ", raw_response=None)
+
+    feedback = PeerFeedbackClient(BlankOpenAIClient()).request_feedback(
+        session_id="session-blank-live",
+        candidate_id="candidate-001",
+        objective_text="Reward stable, centered balance.",
+        reward_definition="def reward(state): return 1.0",
+        aggregate_score=1.2,
+    )
+
+    assert feedback.comment == FALLBACK_PEER_COMMENT
+    assert feedback.score == 0.85
+
+
+def test_default_session_id_is_unique_between_calls() -> None:
+    """Automatically generated session identifiers should not collide in fast succession."""
+
+    assert _default_session_id() != _default_session_id()
+
+
+def test_openai_client_loads_credentials_from_local_dotenv(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """OpenAI config should load from a local `.env` file when process vars are absent."""
+
+    monkeypatch.chdir(tmp_path)
+    for name in (
+        "OPENAI_API_KEY",
+        "OPENAI_ORG_ID",
+        "OPENAI_ORGANIZATION",
+        "OPENAI_PROJECT",
+        "OPENAI_BASE_URL",
+        "OPENAI_TIMEOUT_SECONDS",
+        "REWARDLAB_ENV_FILE",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    (tmp_path / ".env").write_text(
+        "\n".join(
+            [
+                "OPENAI_API_KEY=dotenv-key",
+                "OPENAI_PROJECT=project-from-file",
+                "OPENAI_TIMEOUT_SECONDS=45",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    config = OpenAIClient.config_from_environment()
+
+    assert config.api_key == "dotenv-key"
+    assert config.project == "project-from-file"
+    assert config.timeout_seconds == 45.0
+
+
+def test_service_paths_from_environment_prefers_process_values_over_dotenv(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """Process environment values should override a discovered `.env` file."""
+
+    monkeypatch.chdir(tmp_path)
+    for name in (
+        "REWARDLAB_DATA_DIR",
+        "REWARDLAB_DB_PATH",
+        "REWARDLAB_EVENT_LOG_DIR",
+        "REWARDLAB_CHECKPOINT_DIR",
+        "REWARDLAB_REPORT_DIR",
+        "REWARDLAB_ENV_FILE",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    (tmp_path / ".env").write_text(
+        "\n".join(
+            [
+                "REWARDLAB_DATA_DIR=.rewardlab-from-file",
+                "REWARDLAB_DB_PATH=.rewardlab-from-file/file.sqlite3",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    file_paths = ServicePaths.from_environment()
+    assert file_paths.data_dir == Path(".rewardlab-from-file")
+    assert file_paths.database_path == Path(".rewardlab-from-file/file.sqlite3")
+
+    monkeypatch.setenv("REWARDLAB_DATA_DIR", "process-runtime")
+    monkeypatch.setenv("REWARDLAB_DB_PATH", "process-runtime/custom.sqlite3")
+
+    process_paths = ServicePaths.from_environment()
+    assert process_paths.data_dir == Path("process-runtime")
+    assert process_paths.database_path == Path("process-runtime/custom.sqlite3")
+
+
+def test_openai_client_can_use_explicit_env_file_override(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    """The runtime should honor an explicit env-file override when configured."""
+
+    env_file = tmp_path / "config" / "rewardlab.env"
+    env_file.parent.mkdir(parents=True, exist_ok=True)
+    env_file.write_text("OPENAI_API_KEY=override-key\n", encoding="utf-8")
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("REWARDLAB_ENV_FILE", str(env_file))
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    config = OpenAIClient.config_from_environment()
+
+    assert config.api_key == "override-key"
