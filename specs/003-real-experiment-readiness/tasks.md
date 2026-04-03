@@ -65,17 +65,17 @@ created through the normal lifecycle.
 
 ### Tests for User Story 1
 
-- [ ] T011 [P] [US1] Add contract tests for real Gymnasium environment resolution and actionable runtime failures in `tests/contract/test_gymnasium_backend_runtime.py`
-- [ ] T012 [P] [US1] Add integration coverage for session-step real Gymnasium experiment persistence in `tests/integration/test_gymnasium_real_experiment.py`
-- [ ] T013 [P] [US1] Add an end-to-end CLI smoke for actual Gymnasium execution in `tests/e2e/test_gymnasium_actual_experiment.py`
+- [x] T011 [P] [US1] Add contract tests for real Gymnasium environment resolution and actionable runtime failures in `tests/contract/test_gymnasium_backend_runtime.py`
+- [x] T012 [P] [US1] Add integration coverage for session-step real Gymnasium experiment persistence in `tests/integration/test_gymnasium_real_experiment.py`
+- [x] T013 [P] [US1] Add an end-to-end CLI smoke for actual Gymnasium execution in `tests/e2e/test_gymnasium_actual_experiment.py`
 
 ### Implementation for User Story 1
 
-- [ ] T014 [P] [US1] Implement real Gymnasium environment creation and runtime checks in `src/rewardlab/experiments/backends/gymnasium_backend.py`
-- [ ] T015 [P] [US1] Implement the minimal Gymnasium experiment runner in `src/rewardlab/experiments/gymnasium_runner.py`
-- [ ] T016 [US1] Integrate real Gymnasium execution into `src/rewardlab/orchestrator/session_service.py` and `src/rewardlab/orchestrator/iteration_engine.py`
-- [ ] T017 [US1] Persist Gymnasium run evidence and expose it in `src/rewardlab/orchestrator/reporting.py`
-- [ ] T018 [US1] Update the CLI workflow docs for actual Gymnasium sessions in `README.md` and `specs/001-iterative-reward-design/quickstart.md`
+- [x] T014 [P] [US1] Implement real Gymnasium environment creation and runtime checks in `src/rewardlab/experiments/backends/gymnasium_backend.py`
+- [x] T015 [P] [US1] Implement the minimal Gymnasium experiment runner in `src/rewardlab/experiments/gymnasium_runner.py`
+- [x] T016 [US1] Integrate real Gymnasium execution into `src/rewardlab/orchestrator/session_service.py` and `src/rewardlab/orchestrator/iteration_engine.py`
+- [x] T017 [US1] Persist Gymnasium run evidence and expose it in `src/rewardlab/orchestrator/reporting.py`
+- [x] T018 [US1] Update the CLI workflow docs for actual Gymnasium sessions in `README.md` and `specs/001-iterative-reward-design/quickstart.md`
 
 **Checkpoint**: Real Gymnasium experiments run through the normal session lifecycle.
 

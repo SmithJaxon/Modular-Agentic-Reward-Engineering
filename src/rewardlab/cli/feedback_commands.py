@@ -11,7 +11,11 @@ from typing import Annotated
 
 import typer
 
-from rewardlab.orchestrator.session_service import ServicePaths, SessionService
+from rewardlab.orchestrator.session_service import (
+    ServicePaths,
+    SessionService,
+    resolve_execution_mode_from_environment,
+)
 
 feedback_app = typer.Typer(help="Manage RewardLab human and peer feedback.")
 
@@ -19,7 +23,10 @@ feedback_app = typer.Typer(help="Manage RewardLab human and peer feedback.")
 def _build_service() -> SessionService:
     """Construct and initialize a session service from environment paths."""
 
-    service = SessionService(paths=ServicePaths.from_environment())
+    service = SessionService(
+        paths=ServicePaths.from_environment(),
+        execution_mode=resolve_execution_mode_from_environment(),
+    )
     service.initialize()
     return service
 

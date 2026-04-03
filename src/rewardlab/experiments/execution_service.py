@@ -44,6 +44,8 @@ class ExecutionRequest:
     variant_label: str = "default"
     seed: int | None = None
     entrypoint_name: str = DEFAULT_ENTRYPOINT_NAME
+    render_mode: str | None = None
+    max_episode_steps: int | None = None
 
 
 @dataclass(frozen=True, slots=True)

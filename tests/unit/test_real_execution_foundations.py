@@ -7,10 +7,8 @@ Last Updated: 2026-04-02
 from __future__ import annotations
 
 import json
-import shutil
 from datetime import UTC, datetime
 from pathlib import Path
-from uuid import uuid4
 
 import pytest
 from pydantic import ValidationError
@@ -29,16 +27,6 @@ from rewardlab.schemas.reward_candidate import RewardCandidate
 from rewardlab.schemas.robustness_assessment import RiskLevel, RobustnessAssessment
 from rewardlab.schemas.runtime_status import BackendRuntimeStatus
 from rewardlab.schemas.session_config import EnvironmentBackend
-
-
-@pytest.fixture()
-def workspace_tmp_path() -> Path:
-    """Provide a worktree-local temporary directory without pytest tmpdir helpers."""
-
-    root = Path(".tmp") / f"real-foundations-{uuid4().hex}"
-    root.mkdir(parents=True, exist_ok=True)
-    yield root
-    shutil.rmtree(root, ignore_errors=True)
 
 
 def build_candidate(**overrides: object) -> RewardCandidate:

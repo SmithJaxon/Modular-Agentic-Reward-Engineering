@@ -43,6 +43,13 @@ inside `.venv`:
 .\.venv\Scripts\python -m pytest --run-real-isaacgym
 ```
 
+Actual backend session stepping is also opt-in. Set the execution mode before
+running the real Gymnasium or Isaac CLI flows:
+
+```powershell
+$env:REWARDLAB_EXECUTION_MODE = "actual_backend"
+```
+
 ## Target Validation Commands
 
 Offline regression:
@@ -54,6 +61,7 @@ Offline regression:
 Gymnasium real smoke target after implementation:
 
 ```powershell
+$env:REWARDLAB_EXECUTION_MODE = "actual_backend"
 .\.venv\Scripts\rewardlab.exe session start `
   --objective-file tools/fixtures/objectives/cartpole.txt `
   --baseline-reward-file tools/fixtures/rewards/cartpole_baseline.py `
@@ -63,11 +71,14 @@ Gymnasium real smoke target after implementation:
   --max-iterations 2 `
   --feedback-gate none `
   --json
+.\.venv\Scripts\rewardlab.exe session step --session-id <SESSION_ID> --json
+.\.venv\Scripts\rewardlab.exe session stop --session-id <SESSION_ID> --json
 ```
 
 Isaac real smoke target after implementation:
 
 ```powershell
+$env:REWARDLAB_EXECUTION_MODE = "actual_backend"
 .\.venv\Scripts\rewardlab.exe session start `
   --objective-file tools/fixtures/objectives/cartpole.txt `
   --baseline-reward-file tools/fixtures/rewards/cartpole_baseline.py `

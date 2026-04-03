@@ -49,6 +49,15 @@ after the required runtime is present:
 .\.venv\Scripts\python -m pytest --run-real-isaacgym
 ```
 
+To route `session step` through the real backend path instead of the offline
+heuristic path, set:
+
+```powershell
+$env:REWARDLAB_EXECUTION_MODE = "actual_backend"
+```
+
+Use `offline_test` to force the deterministic validation mode.
+
 ## Offline Workflow
 
 Most validation and CLI flows run without an API key. The peer-feedback path
@@ -86,6 +95,30 @@ Step the session, attach feedback, and export a report:
 .\.venv\Scripts\rewardlab.exe session stop --session-id <SESSION_ID> --json
 .\.venv\Scripts\rewardlab.exe session report --session-id <SESSION_ID> --json
 ```
+
+## Actual Gymnasium Workflow
+
+After approval-gated Gymnasium dependencies are installed, enable the real
+backend mode and run the same CLI flow against `CartPole-v1`:
+
+```powershell
+$env:REWARDLAB_EXECUTION_MODE = "actual_backend"
+.\.venv\Scripts\rewardlab.exe session start `
+  --objective-file tools/fixtures/objectives/cartpole.txt `
+  --baseline-reward-file tools/fixtures/rewards/cartpole_baseline.py `
+  --environment-id CartPole-v1 `
+  --environment-backend gymnasium `
+  --no-improve-limit 2 `
+  --max-iterations 2 `
+  --feedback-gate none `
+  --json
+.\.venv\Scripts\rewardlab.exe session step --session-id <SESSION_ID> --json
+.\.venv\Scripts\rewardlab.exe session stop --session-id <SESSION_ID> --json
+```
+
+In real backend mode, RewardLab writes per-run manifests and metrics beneath
+`.rewardlab/runs/`, persists `ExperimentRun` records in SQLite, and includes run
+ids plus artifact references in the exported report summaries.
 
 Generated artifacts are written beneath `.rewardlab/`:
 

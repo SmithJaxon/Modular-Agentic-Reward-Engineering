@@ -34,6 +34,16 @@ Expected result:
 - Header/docstring audit returns no findings.
 - `ruff`, `mypy`, and the full pytest suite complete successfully.
 
+Default CLI sessions use the deterministic offline mode. To force real backend
+execution after approved dependencies are present, set:
+
+```powershell
+$env:REWARDLAB_EXECUTION_MODE = "actual_backend"
+```
+
+Set `REWARDLAB_EXECUTION_MODE=offline_test` to return to the deterministic
+validation path.
+
 ## 3. Start a Deterministic Local Session
 
 ```powershell
@@ -126,6 +136,9 @@ Expected result:
 ## 7. Backend Routing Notes
 
 - `gymnasium` workflows are fully runnable with the local deterministic fixtures.
+- Real Gymnasium execution uses the same CLI commands once
+  `REWARDLAB_EXECUTION_MODE=actual_backend` is set and approved dependencies are
+  installed in `.venv`.
 - `isaacgym` routing is implemented and covered by contract/integration tests.
 - For manual `isaacgym` runs, supply your own objective and reward files plus a
   valid environment identifier available in your local backend setup.

@@ -7,8 +7,10 @@ Last Updated: 2026-04-02
 from __future__ import annotations
 
 import importlib.util
+import shutil
 import sys
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 
@@ -102,3 +104,15 @@ def _module_available(module_name: str) -> bool:
     """Return whether the requested module can be imported in the active interpreter."""
 
     return importlib.util.find_spec(module_name) is not None
+
+
+@pytest.fixture()
+def workspace_tmp_path() -> Path:
+    """Provide a worktree-local temporary directory for sandbox-safe test files."""
+
+    root = ROOT / ".tmp" / f"pytest-{uuid4().hex}"
+    root.mkdir(parents=True, exist_ok=True)
+    try:
+        yield root
+    finally:
+        shutil.rmtree(root, ignore_errors=True)

@@ -11,6 +11,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
+from rewardlab.experiments.artifacts import RunArtifactWriter
+from rewardlab.experiments.execution_service import ExecutionRequest, ExperimentExecutionService
+from rewardlab.experiments.gymnasium_runner import GymnasiumExperimentRunner
 from rewardlab.feedback.demo_artifacts import DemoArtifactTracker
 from rewardlab.feedback.gating import FeedbackGateEvaluator
 from rewardlab.feedback.human_feedback_service import HumanFeedbackService
@@ -22,6 +25,7 @@ from rewardlab.orchestrator.reporting import SessionReportWriter
 from rewardlab.orchestrator.state_machine import TransitionRequest, apply_transition
 from rewardlab.persistence.event_log import EventRecord
 from rewardlab.persistence.session_repository import RepositoryPaths, SessionRepository
+from rewardlab.schemas.experiment_run import ExecutionMode, ExperimentRun, RunStatus
 from rewardlab.schemas.feedback_entry import FeedbackEntry
 from rewardlab.schemas.reflection_record import ReflectionRecord
 from rewardlab.schemas.reward_candidate import RewardCandidate
@@ -68,6 +72,11 @@ class ServicePaths:
             checkpoint_dir=checkpoint_dir,
             report_dir=report_dir,
         )
+
+    def experiment_artifact_writer(self) -> RunArtifactWriter:
+        """Build the run-artifact writer rooted under the local runtime directory."""
+
+        return RunArtifactWriter(self.data_dir / "runs")
 
 
 @dataclass(frozen=True)
@@ -142,9 +151,12 @@ class SessionService:
         selection_policy: CandidateSelectionPolicy | None = None,
         checkpoint_manager: CheckpointManager | None = None,
         report_writer: SessionReportWriter | None = None,
+        experiment_execution_service: ExperimentExecutionService | None = None,
+        gymnasium_runner: GymnasiumExperimentRunner | None = None,
         human_feedback_service: HumanFeedbackService | None = None,
         peer_feedback_client: PeerFeedbackClient | None = None,
         feedback_gate_evaluator: FeedbackGateEvaluator | None = None,
+        execution_mode: ExecutionMode = ExecutionMode.OFFLINE_TEST,
     ) -> None:
         """Construct a session service using worktree-local dependencies."""
 
@@ -159,11 +171,17 @@ class SessionService:
         self.selection_policy = selection_policy or CandidateSelectionPolicy()
         self.checkpoint_manager = checkpoint_manager or CheckpointManager(paths.checkpoint_dir)
         self.report_writer = report_writer or SessionReportWriter(paths.report_dir)
+        self.experiment_execution_service = (
+            experiment_execution_service
+            or ExperimentExecutionService(artifact_writer=paths.experiment_artifact_writer())
+        )
+        self.gymnasium_runner = gymnasium_runner or GymnasiumExperimentRunner()
         self.human_feedback_service = human_feedback_service or HumanFeedbackService(
             DemoArtifactTracker(paths.report_dir / "feedback_artifacts")
         )
         self.peer_feedback_client = peer_feedback_client or PeerFeedbackClient(OpenAIClient())
         self.feedback_gate_evaluator = feedback_gate_evaluator or FeedbackGateEvaluator()
+        self.execution_mode = execution_mode
 
     def initialize(self) -> None:
         """Initialize local persistence directories and stores."""
@@ -198,6 +216,7 @@ class SessionService:
                 "objective_text": objective_text,
                 "current_iteration": 0,
                 "no_improve_streak": 0,
+                "execution_mode": self.execution_mode.value,
             },
         )
         actual_session_id = session_id or _default_session_id()
@@ -216,10 +235,14 @@ class SessionService:
             iteration_index=0,
             reward_definition=baseline_reward,
             change_summary="Baseline candidate loaded from input reward file.",
-            aggregate_score=self.iteration_engine.evaluate_candidate(
-                objective_text=objective_text,
-                reward_definition=baseline_reward,
-                iteration_index=0,
+            aggregate_score=(
+                self.iteration_engine.evaluate_candidate(
+                    objective_text=objective_text,
+                    reward_definition=baseline_reward,
+                    iteration_index=0,
+                )
+                if self.execution_mode == ExecutionMode.OFFLINE_TEST
+                else None
             ),
         )
         record = SessionRecord(
@@ -255,11 +278,14 @@ class SessionService:
         )
 
     def step_session(self, session_id: str) -> SteppedSession:
-        """Execute one deterministic iteration for a running session."""
+        """Execute one iteration for a running session."""
 
         session = self._get_required_session(session_id)
         if session.status != SessionStatus.RUNNING:
             raise ValueError(f"session {session_id!r} is not running")
+
+        if self.execution_mode == ExecutionMode.ACTUAL_BACKEND:
+            return self._step_session_actual_backend(session)
 
         candidates = self.list_candidates(session_id)
         current_candidate = max(candidates, key=lambda candidate: candidate.iteration_index)
@@ -345,6 +371,7 @@ class SessionService:
 
         candidates = self.list_candidates(session_id)
         reflections = self.list_reflections(session_id)
+        experiment_runs = self.list_experiment_runs(session_id=session_id)
         feedback_entries = self.list_feedback(session_id)
         gate_result = self.feedback_gate_evaluator.evaluate(
             feedback_gate=session.feedback_gate,
@@ -356,6 +383,7 @@ class SessionService:
             reflections=reflections,
             feedback_entries=feedback_entries,
             gate_result=gate_result,
+            experiment_runs=experiment_runs,
         )
         self.repository.save_session(session)
         self.repository.append_event(
@@ -406,6 +434,7 @@ class SessionService:
         session = self._get_required_session(session_id)
         candidates = self.list_candidates(session_id)
         reflections = self.list_reflections(session_id)
+        experiment_runs = self.list_experiment_runs(session_id=session_id)
         feedback_entries = self.list_feedback(session_id)
         gate_result = self.feedback_gate_evaluator.evaluate(
             feedback_gate=session.feedback_gate,
@@ -417,6 +446,7 @@ class SessionService:
             reflections=reflections,
             feedback_entries=feedback_entries,
             gate_result=gate_result,
+            experiment_runs=experiment_runs,
         )
         return StoppedSession(
             session_id=session_id,
@@ -447,6 +477,25 @@ class SessionService:
         )
         reflections = [ReflectionRecord.model_validate(payload) for payload in payloads]
         return sorted(reflections, key=lambda reflection: reflection.created_at)
+
+    def list_experiment_runs(
+        self,
+        *,
+        session_id: str | None = None,
+        candidate_id: str | None = None,
+    ) -> list[ExperimentRun]:
+        """Return persisted experiment runs for the requested session or candidate."""
+
+        runs = self.repository.list_experiment_runs(candidate_id=candidate_id)
+        if session_id is None:
+            return runs
+        session_prefix = f"{session_id}-"
+        candidate_ids = {candidate.candidate_id for candidate in self.list_candidates(session_id)}
+        return [
+            run
+            for run in runs
+            if run.candidate_id in candidate_ids or run.run_id.startswith(session_prefix)
+        ]
 
     def submit_human_feedback(
         self,
@@ -513,6 +562,177 @@ class SessionService:
         """Return persisted event log records for a session."""
 
         return self.repository.read_events(session_id)
+
+    def _step_session_actual_backend(self, session: SessionRecord) -> SteppedSession:
+        """Execute one real-backend iteration and persist the resulting evidence."""
+
+        candidates = self.list_candidates(session.session_id)
+        current_candidate = max(candidates, key=lambda candidate: candidate.iteration_index)
+        previous_best = self.selection_policy.select_best_candidate(candidates)
+        objective_text = str(session.metadata["objective_text"])
+        planned_iteration = self.iteration_engine.plan_iteration(
+            session_id=session.session_id,
+            objective_text=objective_text,
+            current_candidate=current_candidate,
+        )
+        execution_result = self.experiment_execution_service.execute_candidate(
+            candidate=planned_iteration.candidate,
+            request=ExecutionRequest(
+                run_id=planned_iteration.run_id,
+                backend=session.environment_backend,
+                environment_id=session.environment_id,
+                execution_mode=self.execution_mode,
+                seed=_optional_int(session.metadata.get("seed")),
+            ),
+            runner=self._runner_for_backend(session.environment_backend),
+        )
+        self.repository.save_experiment_run(execution_result.run)
+        self.repository.append_event(
+            session_id=session.session_id,
+            event_type=(
+                "experiment_run.completed"
+                if execution_result.run.status == RunStatus.COMPLETED
+                else "experiment_run.failed"
+            ),
+            payload={
+                "run_id": execution_result.run.run_id,
+                "candidate_id": execution_result.run.candidate_id,
+                "status": execution_result.run.status.value,
+                "artifact_refs": execution_result.run.artifact_refs,
+                "failure_reason": execution_result.run.failure_reason,
+            },
+        )
+
+        if execution_result.run.status != RunStatus.COMPLETED:
+            return self._pause_after_failed_execution(
+                session=session,
+                previous_best=previous_best,
+                failure_run=execution_result.run,
+            )
+
+        executed_candidate = planned_iteration.candidate.model_copy(
+            update={"aggregate_score": _score_from_run(execution_result.run)}
+        )
+        reflection = self.iteration_engine.build_execution_reflection(
+            session_id=session.session_id,
+            candidate=executed_candidate,
+            run_id=execution_result.run.run_id,
+            metrics=execution_result.run.metrics,
+            proposed_changes=planned_iteration.proposed_changes,
+        )
+        self._save_candidate(executed_candidate)
+        self._save_reflection(session.session_id, reflection)
+        self.repository.append_event(
+            session_id=session.session_id,
+            event_type="reflection.created",
+            payload={
+                "reflection_id": reflection.reflection_id,
+                "candidate_id": executed_candidate.candidate_id,
+            },
+        )
+        self.repository.append_event(
+            session_id=session.session_id,
+            event_type="candidate.created",
+            payload={
+                "candidate_id": executed_candidate.candidate_id,
+                "iteration_index": executed_candidate.iteration_index,
+            },
+        )
+
+        candidates = self.list_candidates(session.session_id)
+        reflections = self.list_reflections(session.session_id)
+        best_candidate = self.selection_policy.select_best_candidate(candidates)
+        no_improve_streak = int(session.metadata.get("no_improve_streak", 0))
+        if best_candidate.candidate_id != previous_best.candidate_id:
+            no_improve_streak = 0
+        else:
+            no_improve_streak += 1
+
+        updated_session = session.model_copy(
+            update={
+                "best_candidate_id": best_candidate.candidate_id,
+                "metadata": {
+                    **session.metadata,
+                    "current_iteration": executed_candidate.iteration_index,
+                    "no_improve_streak": no_improve_streak,
+                    "last_run_id": execution_result.run.run_id,
+                },
+            }
+        )
+        updated_session = self._maybe_complete_session(updated_session)
+        self.repository.save_session(updated_session)
+        self.repository.append_event(
+            session_id=session.session_id,
+            event_type="session.iteration_completed",
+            payload={
+                "candidate_id": executed_candidate.candidate_id,
+                "iteration_index": executed_candidate.iteration_index,
+                "run_id": execution_result.run.run_id,
+                "best_candidate_id": best_candidate.candidate_id,
+            },
+        )
+        self._write_checkpoint(
+            updated_session,
+            candidates=candidates,
+            reflections=reflections,
+        )
+        return SteppedSession(
+            session_id=session.session_id,
+            iteration_index=executed_candidate.iteration_index,
+            candidate_id=executed_candidate.candidate_id,
+            status=updated_session.status,
+            best_candidate_id=updated_session.best_candidate_id,
+        )
+
+    def _pause_after_failed_execution(
+        self,
+        *,
+        session: SessionRecord,
+        previous_best: RewardCandidate,
+        failure_run: ExperimentRun,
+    ) -> SteppedSession:
+        """Pause the session after an actual-backend failure and retain resumable state."""
+
+        paused_session = apply_transition(
+            session,
+            TransitionRequest(
+                next_status=SessionStatus.PAUSED,
+                stop_reason=StopReason.API_FAILURE_PAUSE,
+                best_candidate_id=previous_best.candidate_id,
+            ),
+        )
+        paused_session = paused_session.model_copy(
+            update={
+                "metadata": {
+                    **session.metadata,
+                    "last_failed_run_id": failure_run.run_id,
+                }
+            }
+        )
+        self.repository.save_session(paused_session)
+        self.repository.append_event(
+            session_id=session.session_id,
+            event_type="session.paused",
+            payload={
+                "run_id": failure_run.run_id,
+                "failure_reason": failure_run.failure_reason,
+            },
+        )
+        self._write_checkpoint(
+            paused_session,
+            candidates=self.list_candidates(session.session_id),
+            reflections=self.list_reflections(session.session_id),
+        )
+        raise RuntimeError(failure_run.failure_reason or "experiment execution failed")
+
+    def _runner_for_backend(self, environment_backend: EnvironmentBackend):
+        """Return the real-backend runner configured for the requested backend."""
+
+        if environment_backend == EnvironmentBackend.GYMNASIUM:
+            return self.gymnasium_runner
+        raise RuntimeError(
+            f"actual backend execution is not implemented yet for {environment_backend.value!r}"
+        )
 
     def _get_required_session(self, session_id: str) -> SessionRecord:
         """Load a session record and raise when it does not exist."""
@@ -689,3 +909,43 @@ def _default_session_id() -> str:
 
     timestamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S-%f")
     return f"session-{timestamp}-{uuid4().hex[:8]}"
+
+
+def resolve_execution_mode_from_environment() -> ExecutionMode:
+    """Return the configured session execution mode from the local runtime environment."""
+
+    env = load_runtime_environment()
+    raw_value = env.get("REWARDLAB_EXECUTION_MODE", ExecutionMode.OFFLINE_TEST.value)
+    try:
+        return ExecutionMode(raw_value)
+    except ValueError as exc:
+        raise ValueError(
+            f"unsupported REWARDLAB_EXECUTION_MODE value: {raw_value!r}"
+        ) from exc
+
+
+def _score_from_run(run: ExperimentRun) -> float:
+    """Return the candidate score derived from a completed experiment run."""
+
+    if "episode_reward" in run.metrics:
+        return float(run.metrics["episode_reward"])
+    if "total_reward" in run.metrics:
+        return float(run.metrics["total_reward"])
+    return 0.0
+
+
+def _optional_int(value: object) -> int | None:
+    """Return an integer value when the metadata entry can be safely coerced."""
+
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.strip():
+        try:
+            return int(value)
+        except ValueError:
+            return None
+    return None

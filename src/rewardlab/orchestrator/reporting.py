@@ -11,6 +11,7 @@ from pathlib import Path
 
 from rewardlab.feedback.gating import FeedbackGateResult
 from rewardlab.orchestrator.iteration_engine import build_iteration_summary
+from rewardlab.schemas.experiment_run import ExperimentRun
 from rewardlab.schemas.feedback_entry import FeedbackEntry
 from rewardlab.schemas.reflection_record import ReflectionRecord
 from rewardlab.schemas.reward_candidate import RewardCandidate
@@ -40,6 +41,7 @@ class SessionReportWriter:
         reflections: list[ReflectionRecord],
         feedback_entries: list[FeedbackEntry],
         gate_result: FeedbackGateResult,
+        experiment_runs: list[ExperimentRun] | None = None,
     ) -> SessionReport:
         """Construct a validated session report from persisted session artifacts."""
 
@@ -48,18 +50,16 @@ class SessionReportWriter:
             reflection.candidate_id: reflection for reflection in reflections
         }
         feedback_by_candidate = _group_feedback_by_candidate(feedback_entries)
+        run_by_candidate = _latest_runs_by_candidate(experiment_runs or [])
         iterations = [
             IterationSummary(
                 iteration_index=candidate.iteration_index,
                 candidate_id=candidate.candidate_id,
-                performance_summary=build_iteration_summary(
+                performance_summary=_performance_summary_for_candidate(
                     candidate=candidate,
-                    reflection=(
-                        reflection_by_candidate.get(candidate.parent_candidate_id)
-                        if candidate.parent_candidate_id is not None
-                        else None
-                    ),
-                    feedback_entries=feedback_by_candidate.get(candidate.candidate_id, []),
+                    reflection_by_candidate=reflection_by_candidate,
+                    feedback_by_candidate=feedback_by_candidate,
+                    run=run_by_candidate.get(candidate.candidate_id),
                 ),
                 risk_level=RiskLevel.LOW,
                 feedback_count=len(feedback_by_candidate.get(candidate.candidate_id, [])),
@@ -88,6 +88,7 @@ class SessionReportWriter:
         reflections: list[ReflectionRecord],
         feedback_entries: list[FeedbackEntry],
         gate_result: FeedbackGateResult,
+        experiment_runs: list[ExperimentRun] | None = None,
     ) -> Path:
         """Write a JSON report artifact and return its path."""
 
@@ -98,6 +99,7 @@ class SessionReportWriter:
             reflections=reflections,
             feedback_entries=feedback_entries,
             gate_result=gate_result,
+            experiment_runs=experiment_runs,
         )
         report_path = self.report_dir / f"{session.session_id}.report.json"
         report_path.write_text(
@@ -146,6 +148,48 @@ def _group_feedback_by_candidate(
     for entry in feedback_entries:
         grouped.setdefault(entry.candidate_id, []).append(entry)
     return grouped
+
+
+def _latest_runs_by_candidate(
+    experiment_runs: list[ExperimentRun],
+) -> dict[str, ExperimentRun]:
+    """Return the latest persisted experiment run for each candidate."""
+
+    latest: dict[str, ExperimentRun] = {}
+    for run in sorted(
+        experiment_runs,
+        key=lambda item: (item.ended_at or item.started_at, item.run_id),
+    ):
+        latest[run.candidate_id] = run
+    return latest
+
+
+def _performance_summary_for_candidate(
+    *,
+    candidate: RewardCandidate,
+    reflection_by_candidate: dict[str, ReflectionRecord],
+    feedback_by_candidate: dict[str, list[FeedbackEntry]],
+    run: ExperimentRun | None,
+) -> str:
+    """Build an iteration summary that includes any stored run evidence."""
+
+    reflection = reflection_by_candidate.get(candidate.candidate_id)
+    if reflection is None and candidate.parent_candidate_id is not None:
+        reflection = reflection_by_candidate.get(candidate.parent_candidate_id)
+
+    summary = build_iteration_summary(
+        candidate=candidate,
+        reflection=reflection,
+        feedback_entries=feedback_by_candidate.get(candidate.candidate_id, []),
+    )
+    if run is None:
+        return summary
+
+    artifact_refs = ", ".join(run.artifact_refs) if run.artifact_refs else "no artifacts recorded"
+    return (
+        f"{summary} Run {run.run_id} used {run.execution_mode.value} on "
+        f"{run.environment_id}; artifacts: {artifact_refs}."
+    )
 
 
 def _selection_summary(gate_result: FeedbackGateResult) -> str:

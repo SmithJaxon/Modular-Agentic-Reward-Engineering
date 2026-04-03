@@ -26,6 +26,15 @@ class IterationArtifacts:
     run_id: str
 
 
+@dataclass(frozen=True)
+class PlannedIteration:
+    """Revised candidate plus run metadata prepared ahead of execution."""
+
+    candidate: RewardCandidate
+    run_id: str
+    proposed_changes: list[str]
+
+
 class IterationEngine:
     """Produce offline-safe reward revisions for the MVP session loop."""
 
@@ -54,23 +63,53 @@ class IterationEngine:
     ) -> IterationArtifacts:
         """Generate reflection and revised candidate artifacts for one iteration."""
 
+        planned_iteration = self.plan_iteration(
+            session_id=session_id,
+            objective_text=objective_text,
+            current_candidate=current_candidate,
+        )
+        next_iteration_index = planned_iteration.candidate.iteration_index
+        reflection = ReflectionRecord(
+            reflection_id=f"{session_id}-reflection-{next_iteration_index:03d}",
+            candidate_id=current_candidate.candidate_id,
+            source_run_ids=[planned_iteration.run_id],
+            summary=(
+                "The previous candidate can be improved by making the reward "
+                "signal more explicit about stability and centered control."
+            ),
+            proposed_changes=planned_iteration.proposed_changes,
+            confidence=min(0.55 + next_iteration_index * 0.08, 0.95),
+        )
+        revised_candidate = planned_iteration.candidate.model_copy(
+            update={
+                "aggregate_score": self.evaluate_candidate(
+                    objective_text=objective_text,
+                    reward_definition=planned_iteration.candidate.reward_definition,
+                    iteration_index=next_iteration_index,
+                )
+            }
+        )
+        return IterationArtifacts(
+            candidate=revised_candidate,
+            reflection=reflection,
+            run_id=planned_iteration.run_id,
+        )
+
+    def plan_iteration(
+        self,
+        *,
+        session_id: str,
+        objective_text: str,
+        current_candidate: RewardCandidate,
+    ) -> PlannedIteration:
+        """Prepare the next revised candidate and its deterministic run identifier."""
+
         next_iteration_index = current_candidate.iteration_index + 1
         run_id = f"{session_id}-run-{next_iteration_index:03d}"
         proposed_changes = [
             "Increase reward emphasis on smooth, centered behavior.",
             "Add clearer stability incentives aligned with the objective.",
         ]
-        reflection = ReflectionRecord(
-            reflection_id=f"{session_id}-reflection-{next_iteration_index:03d}",
-            candidate_id=current_candidate.candidate_id,
-            source_run_ids=[run_id],
-            summary=(
-                "The previous candidate can be improved by making the reward "
-                "signal more explicit about stability and centered control."
-            ),
-            proposed_changes=proposed_changes,
-            confidence=min(0.55 + next_iteration_index * 0.08, 0.95),
-        )
         revised_reward_definition = _revise_reward_definition(
             current_candidate.reward_definition,
             objective_text=objective_text,
@@ -84,16 +123,38 @@ class IterationEngine:
             iteration_index=next_iteration_index,
             reward_definition=revised_reward_definition,
             change_summary="Revision generated from deterministic reflection feedback.",
-            aggregate_score=self.evaluate_candidate(
-                objective_text=objective_text,
-                reward_definition=revised_reward_definition,
-                iteration_index=next_iteration_index,
-            ),
+            aggregate_score=None,
         )
-        return IterationArtifacts(
+        return PlannedIteration(
             candidate=revised_candidate,
-            reflection=reflection,
             run_id=run_id,
+            proposed_changes=proposed_changes,
+        )
+
+    def build_execution_reflection(
+        self,
+        *,
+        session_id: str,
+        candidate: RewardCandidate,
+        run_id: str,
+        metrics: dict[str, float | int | bool],
+        proposed_changes: list[str],
+    ) -> ReflectionRecord:
+        """Build a reflection record that points at a completed backend execution run."""
+
+        score = float(metrics.get("episode_reward", metrics.get("total_reward", 0.0)))
+        step_count = int(metrics.get("step_count", 0))
+        confidence = min(0.6 + candidate.iteration_index * 0.05, 0.95)
+        return ReflectionRecord(
+            reflection_id=f"{session_id}-reflection-{candidate.iteration_index:03d}",
+            candidate_id=candidate.candidate_id,
+            source_run_ids=[run_id],
+            summary=(
+                f"Run {run_id} produced score {score:.3f} over {step_count} steps. "
+                "Use the backend evidence to keep improving stability and centered control."
+            ),
+            proposed_changes=proposed_changes,
+            confidence=confidence,
         )
 
 
