@@ -44,7 +44,7 @@ class PPORunContract:
         }
 
     def render_command(self) -> List[str]:
-        return [
+        command = [
             self.launch_target.python_executable,
             self.entrypoint,
             "--environment",
@@ -64,4 +64,11 @@ class PPORunContract:
             "--run-dir",
             str(self.run_dir),
         ]
-
+        reward_candidate = self.manifest.reward_candidate or {}
+        reward_path = reward_candidate.get("path")
+        reward_entrypoint = reward_candidate.get("entrypoint")
+        if reward_path:
+            command.extend(["--reward-candidate", str(reward_path)])
+        if reward_entrypoint:
+            command.extend(["--reward-entrypoint", str(reward_entrypoint)])
+        return command

@@ -108,3 +108,43 @@ def test_heuristic_policy_records_rationale() -> None:
     assert decision.decision == "validate_reward_candidate"
     assert decision.rationale
     assert decision.suggested_patch
+
+
+def test_orchestrator_can_generate_reward_candidate_when_missing(tmp_path: Path) -> None:
+    manifest = _create_manifest(Path("configs/example_experiment.yaml"))
+    runner = ExperimentRunner(ProjectPaths(Path.cwd()))
+    launch_target = LaunchTarget(
+        kind="gpu_vm",
+        python_executable="python3",
+        working_directory=Path.cwd(),
+    )
+    trace = AgenticOrchestrator(runner=runner).run(
+        manifest=manifest,
+        run_dir=tmp_path,
+        launch_target=launch_target,
+    )
+    decisions = [step.decision.decision for step in trace.steps]
+    assert decisions[0] == "generate_reward_candidate"
+    assert "validate_reward_candidate" in decisions
+    assert (tmp_path / "generated_reward.py").exists()
+    assert trace.reward_candidate is not None
+
+
+def test_orchestrator_refines_generated_candidate_when_feedback_present(tmp_path: Path) -> None:
+    manifest = _create_manifest(Path("configs/example_experiment.yaml"))
+    runner = ExperimentRunner(ProjectPaths(Path.cwd()))
+    launch_target = LaunchTarget(
+        kind="gpu_vm",
+        python_executable="python3",
+        working_directory=Path.cwd(),
+    )
+    trace = AgenticOrchestrator(runner=runner).run(
+        manifest=manifest,
+        run_dir=tmp_path,
+        launch_target=launch_target,
+        human_feedback="Prefer bounded rewards and penalize termination strongly.",
+    )
+    decisions = [step.decision.decision for step in trace.steps]
+    assert "generate_reward_candidate" in decisions
+    assert "refine_reward_candidate" in decisions
+    assert (tmp_path / "refined_reward.py").exists()

@@ -21,6 +21,7 @@ ENVIRONMENT_PRESETS: Dict[str, EnvironmentPreset] = {
             task_name="cartpole",
             default_train_steps=50_000,
             default_eval_episodes=10,
+            default_device="auto",
             default_hyperparameters={
                 "gamma": 0.99,
                 "learning_rate": 3e-4,
@@ -35,6 +36,7 @@ ENVIRONMENT_PRESETS: Dict[str, EnvironmentPreset] = {
             task_name="humanoid",
             default_train_steps=250_000,
             default_eval_episodes=5,
+            default_device="cuda",
             default_hyperparameters={
                 "gamma": 0.99,
                 "learning_rate": 3e-4,
@@ -49,6 +51,7 @@ ENVIRONMENT_PRESETS: Dict[str, EnvironmentPreset] = {
             task_name="allegro_hand",
             default_train_steps=250_000,
             default_eval_episodes=5,
+            default_device="cuda",
             default_hyperparameters={
                 "gamma": 0.99,
                 "learning_rate": 3e-4,
@@ -68,4 +71,3 @@ def get_environment_preset(name: str) -> EnvironmentPreset:
 
 def list_environment_presets() -> List[EnvironmentPreset]:
     return [ENVIRONMENT_PRESETS[key] for key in sorted(ENVIRONMENT_PRESETS)]
-

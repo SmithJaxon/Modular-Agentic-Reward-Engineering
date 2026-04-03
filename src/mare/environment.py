@@ -29,5 +29,5 @@ class IsaacGymEnvironmentProfile:
     task_name: str
     default_train_steps: int
     default_eval_episodes: int
+    default_device: str = "cuda"
     default_hyperparameters: Dict[str, Any] = field(default_factory=dict)
-

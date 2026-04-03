@@ -28,3 +28,17 @@ def test_environment_adapter_builds_execution_plan() -> None:
     assert report.metrics["train_steps"] == 50000.0
     assert report.metrics["eval_episodes"] == 10.0
 
+
+def test_environment_device_defaults_match_runtime_policy() -> None:
+    cartpole = get_environment_adapter("CartPole").build_training_plan(
+        ExperimentManifest(name="cartpole", environment="CartPole", baseline="PPO", seed=1)
+    )
+    humanoid = get_environment_adapter("Humanoid").build_training_plan(
+        ExperimentManifest(name="humanoid", environment="Humanoid", baseline="PPO", seed=1)
+    )
+    allegro = get_environment_adapter("AllegroHand").build_training_plan(
+        ExperimentManifest(name="allegro", environment="AllegroHand", baseline="PPO", seed=1)
+    )
+    assert cartpole.device == "auto"
+    assert humanoid.device == "cuda"
+    assert allegro.device == "cuda"

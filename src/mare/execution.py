@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
+from pathlib import Path
+import subprocess
 from typing import Any, Dict, Optional
 
 from .launch import PPORunContract
@@ -55,6 +57,31 @@ class PPORunDispatcher:
         )
 
     def dispatch(self, contract: PPORunContract) -> ExecutionReceipt:
-        raise NotImplementedError(
-            "Remote execution is not wired yet. Use preview() until the GPU VM launcher is added."
+        if contract.launch_target.kind != "local":
+            raise NotImplementedError(
+                "Remote execution is not wired yet. Use a local launch target or write a launch script for VM handoff."
+            )
+        command = contract.render_command()
+        completed = subprocess.run(
+            command,
+            cwd=contract.launch_target.working_directory,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        status = "completed" if completed.returncode == 0 else "failed"
+        notes = completed.stderr.strip() or completed.stdout.strip() or None
+        metadata = {
+            "returncode": completed.returncode,
+            "stdout": completed.stdout,
+            "stderr": completed.stderr,
+            "result_path": str(Path(contract.run_dir) / "result.json"),
+        }
+        return ExecutionReceipt(
+            mode="dispatch",
+            status=status,
+            contract=contract.to_dict(),
+            command=" ".join(command),
+            notes=notes,
+            metadata=metadata,
         )

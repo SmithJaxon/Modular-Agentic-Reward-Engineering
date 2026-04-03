@@ -2,16 +2,16 @@
   "artifacts": [
     {
       "name": "manifest",
-      "path": "/Users/isabella/MARE/Modular-Agentic-Reward-Engineering/runs/cartpole_baseline_dry_run/manifest.json"
+      "path": "/home/u1402402/Modular-Agentic-Reward-Engineering/runs/cartpole_baseline_dry_run/manifest.json"
     },
     {
       "name": "result",
-      "path": "/Users/isabella/MARE/Modular-Agentic-Reward-Engineering/runs/cartpole_baseline_dry_run/result.json"
+      "path": "/home/u1402402/Modular-Agentic-Reward-Engineering/runs/cartpole_baseline_dry_run/result.json"
     }
   ],
   "manifest": {
     "baseline": "PPO",
-    "created_at": "2026-04-02T22:17:28.755296+00:00",
+    "created_at": "2026-04-03T00:23:04.244506+00:00",
     "environment": "CartPole",
     "extra": {
       "evaluation_mode": "dry_run"
@@ -42,7 +42,7 @@
     "seed": 7.0,
     "train_steps": 50000.0
   },
-  "notes": "{'environment': 'CartPole', 'task_name': 'cartpole', 'algorithm': 'PPO', 'seed': 7, 'train_steps': 50000, 'eval_episodes': 10, 'device': 'cuda', 'hyperparameters': {'gamma': 0.99, 'learning_rate': 0.0003, 'clip_range': 0.2}}",
+  "notes": "{'environment': 'CartPole', 'task_name': 'cartpole', 'algorithm': 'PPO', 'seed': 7, 'train_steps': 50000, 'eval_episodes': 10, 'device': 'auto', 'hyperparameters': {'gamma': 0.99, 'learning_rate': 0.0003, 'clip_range': 0.2}}",
   "reward_candidate": {
     "entrypoint": "compute_reward",
     "name": "cartpole_reward",

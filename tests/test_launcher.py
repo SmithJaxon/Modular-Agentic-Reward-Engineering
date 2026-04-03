@@ -32,3 +32,8 @@ def test_write_launch_script_creates_shell_script(tmp_path: Path) -> None:
     content = (tmp_path / "launch.sh").read_text(encoding="utf-8")
     assert "scripts/train_ppo.py" in content
     assert '. ".env"' in content
+    assert 'SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"' in content
+    assert 'cd "${PROJECT_ROOT}"' in content
+    assert "--run-dir ${SCRIPT_DIR}" not in content
+    assert '--run-dir "${SCRIPT_DIR}"' in content
+    assert str(Path.cwd()) not in content

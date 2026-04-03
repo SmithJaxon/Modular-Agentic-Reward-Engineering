@@ -28,6 +28,7 @@ class BaseIsaacGymAdapter(ABC):
             seed=manifest.seed,
             train_steps=self.profile.default_train_steps,
             eval_episodes=self.profile.default_eval_episodes,
+            device=self.profile.default_device,
             hyperparameters=dict(self.profile.default_hyperparameters),
         )
 

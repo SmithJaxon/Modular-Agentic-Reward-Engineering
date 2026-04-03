@@ -18,6 +18,7 @@ class SweepVariantSpec:
     suffix: str
     rationale: str
     seed_offset: int = 0
+    baseline_override: Optional[str] = None
     environment_variables: Dict[str, str] = field(default_factory=dict)
     notes: Optional[str] = None
 
@@ -213,7 +214,11 @@ class SweepPlanner:
         rationale: str,
         notes: Optional[str] = None,
     ) -> SweepRun:
-        run_manifest = self._copy_manifest(manifest, suffix=name_suffix)
+        run_manifest = self._copy_manifest(
+            manifest,
+            suffix=name_suffix,
+            baseline=launch_target.environment_variables.get("MARE_BASELINE_OVERRIDE", manifest.baseline),
+        )
         run_dir = base_run_dir / run_manifest.name
         contract = self._runner().build_ppo_run_contract(run_manifest, run_dir, launch_target)
         return SweepRun(
@@ -238,11 +243,11 @@ class SweepPlanner:
             reward_candidate=manifest.reward_candidate,
         )
 
-    def _copy_manifest(self, manifest: ExperimentManifest, suffix: str) -> ExperimentManifest:
+    def _copy_manifest(self, manifest: ExperimentManifest, suffix: str, baseline: Optional[str] = None) -> ExperimentManifest:
         return ExperimentManifest(
             name=f"{manifest.name}_{suffix}",
             environment=manifest.environment,
-            baseline=manifest.baseline,
+            baseline=baseline or manifest.baseline,
             seed=manifest.seed,
             created_at=manifest.created_at,
             notes=manifest.notes,
@@ -267,6 +272,20 @@ class SweepPlanner:
                     rationale="Baseline run for the current candidate.",
                 ),
                 SweepVariantSpec(
+                    suffix="a2c_probe",
+                    rationale="Cross-check the reward under A2C to detect PPO-specific overfitting.",
+                    baseline_override="A2C",
+                    environment_variables={"MARE_BASELINE_OVERRIDE": "A2C"},
+                    notes="Algorithm robustness probe.",
+                ),
+                SweepVariantSpec(
+                    suffix="ddqn_probe",
+                    rationale="Cross-check the reward under DDQN to detect algorithm-specific reward hacking.",
+                    baseline_override="DDQN",
+                    environment_variables={"MARE_BASELINE_OVERRIDE": "DDQN"},
+                    notes="Algorithm robustness probe.",
+                ),
+                SweepVariantSpec(
                     suffix="seed_shift",
                     rationale="Nearby seed to estimate robustness across initialization noise.",
                     seed_offset=1,
@@ -285,6 +304,13 @@ class SweepPlanner:
                 SweepVariantSpec(
                     suffix="base",
                     rationale="Baseline Humanoid run for the current candidate.",
+                ),
+                SweepVariantSpec(
+                    suffix="a2c_probe",
+                    rationale="Check whether the reward transfers from PPO to A2C on locomotion.",
+                    baseline_override="A2C",
+                    environment_variables={"MARE_BASELINE_OVERRIDE": "A2C"},
+                    notes="Cross-algorithm transfer probe.",
                 ),
                 SweepVariantSpec(
                     suffix="stability_probe",
@@ -312,6 +338,13 @@ class SweepPlanner:
                     rationale="Baseline AllegroHand run for the current candidate.",
                 ),
                 SweepVariantSpec(
+                    suffix="a2c_probe",
+                    rationale="Check whether the reward remains learnable under A2C.",
+                    baseline_override="A2C",
+                    environment_variables={"MARE_BASELINE_OVERRIDE": "A2C"},
+                    notes="Cross-algorithm transfer probe.",
+                ),
+                SweepVariantSpec(
                     suffix="action_noise_probe",
                     rationale="Action-noise and learning-rate perturbation to expose brittle manipulation rewards.",
                     seed_offset=1,
@@ -334,7 +367,13 @@ class SweepPlanner:
             SweepVariantSpec(
                 suffix="base",
                 rationale="Baseline run for the current candidate.",
-            )
+            ),
+            SweepVariantSpec(
+                suffix="a2c_probe",
+                rationale="Generic cross-algorithm probe using A2C.",
+                baseline_override="A2C",
+                environment_variables={"MARE_BASELINE_OVERRIDE": "A2C"},
+            ),
         ]
 
     def _assess_candidate(

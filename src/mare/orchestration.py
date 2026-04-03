@@ -11,6 +11,7 @@ from .launch import LaunchTarget
 from .manifest import ExperimentManifest
 from .paths import ProjectPaths
 from .reward_candidate import RewardCandidateLoader, RewardCandidateValidator
+from .reward_design import RewardDesignStudio
 from .robustness import RewardRobustnessAnalyzer, RobustnessAssessment
 
 
@@ -66,16 +67,19 @@ class OrchestrationState:
     launch_target: LaunchTarget
     reward_candidate_path: Optional[Path]
     reward_entrypoint: str = "compute_reward"
+    human_feedback: Optional[str] = None
     validated: bool = False
     valid: Optional[bool] = None
     robustness_checked: bool = False
     robustness_rejected: bool = False
     robustness_score: Optional[float] = None
     robustness_risk: Optional[str] = None
+    refinement_count: int = 0
+    max_refinements: int = 1
     previewed: bool = False
     scripted: bool = False
     current_step: int = 0
-    max_steps: int = 4
+    max_steps: int = 8
 
 
 @dataclass(frozen=True)
@@ -122,11 +126,11 @@ class HeuristicOrchestrationPolicy:
     def decide(self, state: OrchestrationState) -> OrchestrationDecision:
         if state.reward_candidate_path is None:
             return OrchestrationDecision(
-                decision="stop",
-                rationale="No reward candidate was provided.",
-                suggested_edit="Attach a reward candidate path before orchestrating.",
-                suggested_patch=None,
-                confidence=0.99,
+                decision="generate_reward_candidate",
+                rationale="No reward candidate was provided, so the loop should draft a starter candidate first.",
+                suggested_edit="Create an environment-aligned starter reward candidate before validation.",
+                suggested_patch="Start with bounded shaping terms tied to the main state variables and small action penalties.",
+                confidence=0.97,
             )
         if not state.validated:
             return OrchestrationDecision(
@@ -159,6 +163,24 @@ class HeuristicOrchestrationPolicy:
                 suggested_edit="Fix the robustness issues before previewing or scripting a launch.",
                 suggested_patch="Rework the reward to reduce hacking risk or better align it with the task state structure.",
                 confidence=0.97,
+            )
+        if (
+            state.refinement_count < state.max_refinements
+            and (
+                (state.human_feedback is not None and state.human_feedback.strip())
+                or (
+                    state.robustness_risk == "medium"
+                    and state.reward_candidate_path is not None
+                    and state.reward_candidate_path.parent == state.run_dir
+                )
+            )
+        ):
+            return OrchestrationDecision(
+                decision="refine_reward_candidate",
+                rationale="The current candidate should be tightened before launch planning.",
+                suggested_edit="Refine the reward to incorporate feedback and bound the shaping terms.",
+                suggested_patch="Clamp the final reward and include the latest human guidance as comments for the next review pass.",
+                confidence=0.86,
             )
         if not state.previewed:
             return OrchestrationDecision(
@@ -200,13 +222,15 @@ class OpenAIOrchestrationPolicy:
             "properties": {
                 "decision": {
                     "type": "string",
-                    "enum": [
-                        "stop",
-                        "validate_reward_candidate",
-                        "assess_reward_robustness",
-                        "preview_launch",
-                        "write_launch_script",
-                    ],
+                        "enum": [
+                            "stop",
+                            "generate_reward_candidate",
+                            "validate_reward_candidate",
+                            "assess_reward_robustness",
+                            "refine_reward_candidate",
+                            "preview_launch",
+                            "write_launch_script",
+                        ],
                 },
                 "rationale": {
                     "type": "string",
@@ -296,12 +320,15 @@ class OpenAIOrchestrationPolicy:
             "launch_target": state.launch_target.to_dict(),
             "reward_candidate_path": str(state.reward_candidate_path) if state.reward_candidate_path else None,
             "reward_entrypoint": state.reward_entrypoint,
+            "human_feedback": state.human_feedback,
             "validated": state.validated,
             "valid": state.valid,
             "robustness_checked": state.robustness_checked,
             "robustness_rejected": state.robustness_rejected,
             "robustness_score": state.robustness_score,
             "robustness_risk": state.robustness_risk,
+            "refinement_count": state.refinement_count,
+            "max_refinements": state.max_refinements,
             "previewed": state.previewed,
             "scripted": state.scripted,
             "current_step": state.current_step,
@@ -318,11 +345,13 @@ class AgenticOrchestrator:
         policy: Optional[OrchestrationPolicy] = None,
         validator: Optional[RewardCandidateValidator] = None,
         loader: Optional[RewardCandidateLoader] = None,
+        design_studio: Optional[RewardDesignStudio] = None,
     ) -> None:
         self.runner = runner
         self.policy = policy or OpenAIOrchestrationPolicy.from_env()
         self.validator = validator or RewardCandidateValidator()
         self.loader = loader or RewardCandidateLoader(self.validator)
+        self.design_studio = design_studio or RewardDesignStudio()
 
     def run(
         self,
@@ -331,6 +360,7 @@ class AgenticOrchestrator:
         launch_target: LaunchTarget,
         reward_candidate_path: Optional[Path] = None,
         reward_entrypoint: str = "compute_reward",
+        human_feedback: Optional[str] = None,
     ) -> OrchestrationTrace:
         runner = self.runner or ExperimentRunner(ProjectPaths(launch_target.working_directory))
         state = OrchestrationState(
@@ -339,6 +369,7 @@ class AgenticOrchestrator:
             launch_target=launch_target,
             reward_candidate_path=reward_candidate_path,
             reward_entrypoint=reward_entrypoint,
+            human_feedback=human_feedback,
         )
         steps: List[OrchestrationStep] = []
         reward_candidate_record: Optional[Dict[str, Any]] = manifest.reward_candidate
@@ -351,7 +382,18 @@ class AgenticOrchestrator:
                 notes = notes or decision.rationale
                 break
 
-            if decision.decision == "validate_reward_candidate":
+            if decision.decision == "generate_reward_candidate":
+                result = self._generate_reward_candidate(state)
+                reward_candidate_record = result.payload.get("reward_candidate")
+                generated_path = result.payload.get("reward_candidate_path")
+                state.reward_candidate_path = Path(generated_path) if generated_path else state.reward_candidate_path
+                state.validated = False
+                state.valid = None
+                state.robustness_checked = False
+                state.robustness_rejected = False
+                state.robustness_score = None
+                state.robustness_risk = None
+            elif decision.decision == "validate_reward_candidate":
                 result = self._validate_reward_candidate(state)
                 reward_candidate_record = result.payload.get("reward_candidate")
                 state.validated = True
@@ -365,6 +407,18 @@ class AgenticOrchestrator:
                 state.robustness_risk = result.payload.get("risk_level")
                 if state.robustness_rejected:
                     notes = result.message or notes
+            elif decision.decision == "refine_reward_candidate":
+                result = self._refine_reward_candidate(state)
+                reward_candidate_record = result.payload.get("reward_candidate")
+                refined_path = result.payload.get("reward_candidate_path")
+                state.reward_candidate_path = Path(refined_path) if refined_path else state.reward_candidate_path
+                state.refinement_count += 1
+                state.validated = False
+                state.valid = None
+                state.robustness_checked = False
+                state.robustness_rejected = False
+                state.robustness_score = None
+                state.robustness_risk = None
             elif decision.decision == "preview_launch":
                 result = self._preview_launch(runner, manifest, run_dir, launch_target)
                 state.previewed = True
@@ -398,7 +452,7 @@ class AgenticOrchestrator:
         )
         if state.reward_candidate_path is None:
             final_status = "idle"
-            notes = notes or "No reward candidate provided."
+            notes = notes or "No reward candidate could be prepared."
         elif state.robustness_rejected:
             final_status = "stopped"
             notes = notes or "Reward candidate rejected by robustness assessment."
@@ -412,6 +466,33 @@ class AgenticOrchestrator:
             reward_candidate=reward_candidate_record,
             robustness_assessment=robustness_assessment_record,
             notes=notes,
+        )
+
+    def _generate_reward_candidate(self, state: OrchestrationState) -> OrchestrationToolResult:
+        candidate_path = state.run_dir / "generated_reward.py"
+        draft = self.design_studio.draft(
+            environment=state.manifest.environment,
+            output_path=candidate_path,
+            human_feedback=state.human_feedback,
+        )
+        validation = self.validator.validate_file(candidate_path, entrypoint=state.reward_entrypoint)
+        reward_candidate_record = {
+            "name": candidate_path.stem,
+            "path": str(candidate_path),
+            "entrypoint": state.reward_entrypoint,
+            "validation": validation.to_dict(),
+            "generated": True,
+        }
+        state.manifest.reward_candidate = reward_candidate_record
+        return OrchestrationToolResult(
+            tool_name="generate_reward_candidate",
+            status="generated",
+            payload={
+                "reward_candidate_path": str(candidate_path),
+                "reward_candidate": reward_candidate_record,
+                "valid": validation.valid,
+            },
+            message=draft.summary,
         )
 
     def _validate_reward_candidate(self, state: OrchestrationState) -> OrchestrationToolResult:
@@ -440,6 +521,42 @@ class AgenticOrchestrator:
                 "issues": validation.to_dict()["issues"],
             },
             message="Reward candidate validated successfully." if validation.valid else "Reward candidate invalid.",
+        )
+
+    def _refine_reward_candidate(self, state: OrchestrationState) -> OrchestrationToolResult:
+        if state.reward_candidate_path is None:
+            return OrchestrationToolResult(
+                tool_name="refine_reward_candidate",
+                status="skipped",
+                message="No reward candidate path provided.",
+            )
+
+        refined_path = state.run_dir / "refined_reward.py"
+        summary_hint = "Refined the reward candidate with bounded shaping for another validation pass."
+        draft = self.design_studio.refine(
+            source_path=state.reward_candidate_path,
+            output_path=refined_path,
+            summary_hint=summary_hint,
+            human_feedback=state.human_feedback,
+        )
+        validation = self.validator.validate_file(refined_path, entrypoint=state.reward_entrypoint)
+        reward_candidate_record = {
+            "name": refined_path.stem,
+            "path": str(refined_path),
+            "entrypoint": state.reward_entrypoint,
+            "validation": validation.to_dict(),
+            "refined_from": str(state.reward_candidate_path),
+        }
+        state.manifest.reward_candidate = reward_candidate_record
+        return OrchestrationToolResult(
+            tool_name="refine_reward_candidate",
+            status="refined",
+            payload={
+                "reward_candidate_path": str(refined_path),
+                "reward_candidate": reward_candidate_record,
+                "valid": validation.valid,
+            },
+            message=draft.summary,
         )
 
     def _assess_reward_robustness(self, state: OrchestrationState) -> OrchestrationToolResult:

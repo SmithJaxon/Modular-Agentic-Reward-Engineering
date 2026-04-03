@@ -240,6 +240,11 @@ def build_parser() -> argparse.ArgumentParser:
     orchestrate_parser.add_argument("--reward-candidate", type=Path, default=None)
     orchestrate_parser.add_argument("--reward-entrypoint", default="compute_reward")
     orchestrate_parser.add_argument(
+        "--human-feedback",
+        default=None,
+        help="Optional human guidance to incorporate during reward drafting/refinement.",
+    )
+    orchestrate_parser.add_argument(
         "--policy",
         choices=["auto", "heuristic", "openai"],
         default="auto",
@@ -666,6 +671,7 @@ def _orchestrate_run(
     python_executable: str,
     reward_candidate: Optional[Path],
     reward_entrypoint: str,
+    human_feedback: Optional[str],
     policy_name: str,
 ) -> int:
     context = load_project_context()
@@ -699,6 +705,7 @@ def _orchestrate_run(
         launch_target=launch_target,
         reward_candidate_path=reward_candidate,
         reward_entrypoint=reward_entrypoint,
+        human_feedback=human_feedback,
     )
     trace_path = trace.write(resolved_run_dir / "orchestration.json")
     print(str(trace_path))
@@ -773,6 +780,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
             args.python_executable,
             args.reward_candidate,
             args.reward_entrypoint,
+            args.human_feedback,
             args.policy,
         )
 

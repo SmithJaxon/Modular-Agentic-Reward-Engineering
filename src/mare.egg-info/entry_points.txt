@@ -1,0 +1,2 @@
+[console_scripts]
+mare = mare.cli:main
