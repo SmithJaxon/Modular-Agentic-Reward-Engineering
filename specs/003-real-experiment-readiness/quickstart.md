@@ -32,6 +32,22 @@ The next agent should ask before running something in one of these shapes:
 Record the exact approved command and the detected package versions here after
 approval is granted. Do not pre-emptively install anything outside that gate.
 
+Approved real Gymnasium install completed on 2026-04-02 with:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install gymnasium
+```
+
+Detected versions after install:
+
+- `gymnasium==1.2.3`
+- `numpy==2.4.4`
+- `cloudpickle==3.1.2`
+- `Farama-Notifications==0.0.4`
+
+`torch` and any Isaac-specific runtime remain pending and should be handled as
+separate approval-gated steps once the Isaac path is ready to validate.
+
 ## Backend-Specific Test Selection
 
 Default pytest runs must stay offline-safe and therefore skip the real backend

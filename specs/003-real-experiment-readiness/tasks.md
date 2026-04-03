@@ -134,7 +134,7 @@ runtime prerequisite error is surfaced.
 **Purpose**: Final validation, reproducibility, cleanup, and handoff refresh.
 
 - [ ] T030 [P] Add backend smoke wrappers and documentation-friendly validation commands in `tools/quality/run_real_backend_smokes.ps1` and `tools/quality/run_full_validation.ps1`
-- [ ] T031 Run the approved real Gymnasium smoke validation and record the evidence in `specs/003-real-experiment-readiness/verification-report.md`
+- [x] T031 Run the approved real Gymnasium smoke validation and record the evidence in `specs/003-real-experiment-readiness/verification-report.md`
 - [ ] T032 Run the approved real Isaac smoke validation and record the evidence in `specs/003-real-experiment-readiness/verification-report.md`
 - [ ] T033 Perform dead-code cleanup and remove superseded MVP-only execution branches in `src/rewardlab/`, `tests/`, and `tools/`
 - [ ] T034 Update `NEXT_AGENT_HANDOFF.md` and `specs/003-real-experiment-readiness/checklists/requirements.md` with final completion status and any remaining blocker notes

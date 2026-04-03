@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Sequence
+from numbers import Real
 from typing import Any
 
 from rewardlab.experiments.backends.gymnasium_backend import GymnasiumBackend
@@ -219,8 +220,20 @@ def _is_numeric_sequence(value: Any, *, min_length: int) -> bool:
 
     if isinstance(value, (str, bytes)):
         return False
-    if not isinstance(value, Sequence):
+    if not isinstance(value, Sequence) and not _looks_indexable(value):
         return False
-    if len(value) < min_length:
+    try:
+        if len(value) < min_length:
+            return False
+    except TypeError:
         return False
-    return all(isinstance(item, (int, float)) for item in value[:min_length])
+    try:
+        return all(isinstance(value[index], Real) for index in range(min_length))
+    except (IndexError, KeyError, TypeError):
+        return False
+
+
+def _looks_indexable(value: Any) -> bool:
+    """Return whether a value exposes basic positional indexing operations."""
+
+    return hasattr(value, "__len__") and hasattr(value, "__getitem__")
