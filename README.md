@@ -28,6 +28,27 @@ py -3.12 -m venv .venv
 No machine-level installs, PATH changes, or global Python package changes are
 required.
 
+## Real Backend Prerequisites
+
+Real backend execution is approval-gated and is not part of the default offline
+setup. Keep every install inside this worktree's `.venv` and record the exact
+approved command once it is run.
+
+Common install shapes after approval:
+
+```powershell
+.\.venv\Scripts\python -m pip install -e .[dev,gymnasium,torch]
+.\.venv\Scripts\python -m pip install <approved isaac runtime packages>
+```
+
+Default `pytest` runs skip the approval-gated real backend smokes. Opt in only
+after the required runtime is present:
+
+```powershell
+.\.venv\Scripts\python -m pytest --run-real-gymnasium
+.\.venv\Scripts\python -m pytest --run-real-isaacgym
+```
+
 ## Offline Workflow
 
 Most validation and CLI flows run without an API key. The peer-feedback path
@@ -39,7 +60,7 @@ Start a session with the checked-in CartPole fixtures:
 .\.venv\Scripts\rewardlab.exe session start `
   --objective-file tools/fixtures/objectives/cartpole.txt `
   --baseline-reward-file tools/fixtures/rewards/cartpole_baseline.py `
-  --environment-id cartpole-v1 `
+  --environment-id CartPole-v1 `
   --environment-backend gymnasium `
   --no-improve-limit 3 `
   --max-iterations 5 `
@@ -105,4 +126,5 @@ That runner executes:
 - all unit, contract, integration, and end-to-end tests
 
 Detailed operator steps and manual workflow examples are in
-`specs/001-iterative-reward-design/quickstart.md`.
+`specs/001-iterative-reward-design/quickstart.md` and
+`specs/003-real-experiment-readiness/quickstart.md`.

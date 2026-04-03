@@ -22,13 +22,26 @@ existing worktree safety rules.
 
 ## Expected Approval-Gated Install Step
 
-The next agent should ask before running something in this shape:
+The next agent should ask before running something in one of these shapes:
 
 ```powershell
-.\.venv\Scripts\python -m pip install <approved packages>
+.\.venv\Scripts\python -m pip install -e .[dev,gymnasium,torch]
+.\.venv\Scripts\python -m pip install <approved isaac runtime packages>
 ```
 
-The final install command should be recorded exactly after approval is granted.
+Record the exact approved command and the detected package versions here after
+approval is granted. Do not pre-emptively install anything outside that gate.
+
+## Backend-Specific Test Selection
+
+Default pytest runs must stay offline-safe and therefore skip the real backend
+smokes. Use the opt-in flags only after the corresponding runtime is available
+inside `.venv`:
+
+```powershell
+.\.venv\Scripts\python -m pytest --run-real-gymnasium
+.\.venv\Scripts\python -m pytest --run-real-isaacgym
+```
 
 ## Target Validation Commands
 
@@ -44,7 +57,7 @@ Gymnasium real smoke target after implementation:
 .\.venv\Scripts\rewardlab.exe session start `
   --objective-file tools/fixtures/objectives/cartpole.txt `
   --baseline-reward-file tools/fixtures/rewards/cartpole_baseline.py `
-  --environment-id <REAL_GYM_ENV> `
+  --environment-id CartPole-v1 `
   --environment-backend gymnasium `
   --no-improve-limit 2 `
   --max-iterations 2 `
@@ -58,13 +71,17 @@ Isaac real smoke target after implementation:
 .\.venv\Scripts\rewardlab.exe session start `
   --objective-file tools/fixtures/objectives/cartpole.txt `
   --baseline-reward-file tools/fixtures/rewards/cartpole_baseline.py `
-  --environment-id <REAL_ISAAC_ENV> `
+  --environment-id <APPROVED_ISAAC_ENV> `
   --environment-backend isaacgym `
   --no-improve-limit 1 `
   --max-iterations 1 `
   --feedback-gate none `
   --json
 ```
+
+Use `tools/fixtures/experiments/gymnasium_cartpole.json` and
+`tools/fixtures/experiments/isaac_default.json` as the checked-in starting
+configs for these runs.
 
 ## Completion Evidence
 

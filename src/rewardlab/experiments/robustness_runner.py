@@ -15,7 +15,7 @@ from typing import Any
 
 from rewardlab.experiments.backends.base import BackendAdapter
 from rewardlab.experiments.backends.factory import resolve_backend
-from rewardlab.schemas.experiment_run import ExperimentRun, RunStatus, RunType
+from rewardlab.schemas.experiment_run import ExecutionMode, ExperimentRun, RunStatus, RunType
 from rewardlab.schemas.reward_candidate import RewardCandidate
 from rewardlab.schemas.robustness_assessment import RobustnessAssessment
 from rewardlab.schemas.session_config import EnvironmentBackend
@@ -81,7 +81,10 @@ class RobustnessRunner:
                 ExperimentRun(
                     run_id=f"{candidate.candidate_id}-robustness-{index:03d}",
                     candidate_id=candidate.candidate_id,
+                    backend=environment_backend,
+                    environment_id=variant.environment_id,
                     run_type=RunType.ROBUSTNESS,
+                    execution_mode=ExecutionMode.OFFLINE_TEST,
                     variant_label=variant.label,
                     seed=variant.seed,
                     status=RunStatus.COMPLETED,

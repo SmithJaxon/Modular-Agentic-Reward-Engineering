@@ -29,10 +29,10 @@ offline-safe suite while adding backend smoke evidence.
 **Purpose**: Prepare reproducible backend-ready fixtures, validation markers, and
 operator instructions without changing machine-global state.
 
-- [ ] T001 Update operator prerequisites and approval-gated install guidance in `README.md` and `specs/003-real-experiment-readiness/quickstart.md`
+- [x] T001 Update operator prerequisites and approval-gated install guidance in `README.md` and `specs/003-real-experiment-readiness/quickstart.md`
 - [ ] T002 With user approval, install the required real-backend dependencies into `.venv\` and record the exact commands and detected versions in `specs/003-real-experiment-readiness/quickstart.md`
-- [ ] T003 [P] Add backend-specific pytest markers and skip guidance in `pyproject.toml` and `tests/conftest.py`
-- [ ] T004 [P] Add real-run fixture configs for Gymnasium and Isaac execution in `tools/fixtures/experiments/gymnasium_cartpole.json` and `tools/fixtures/experiments/isaac_default.json`
+- [x] T003 [P] Add backend-specific pytest markers and skip guidance in `pyproject.toml` and `tests/conftest.py`
+- [x] T004 [P] Add real-run fixture configs for Gymnasium and Isaac execution in `tools/fixtures/experiments/gymnasium_cartpole.json` and `tools/fixtures/experiments/isaac_default.json`
 
 ---
 
@@ -43,12 +43,12 @@ needed by both backends.
 
 **CRITICAL**: No real backend user story is complete until this phase is done.
 
-- [ ] T005 Implement reward program loading and validation in `src/rewardlab/experiments/reward_program.py`
-- [ ] T006 [P] Implement run artifact bundle writing in `src/rewardlab/experiments/artifacts.py`
-- [ ] T007 Implement actual experiment execution coordination in `src/rewardlab/experiments/execution_service.py`
-- [ ] T008 [P] Extend experiment run metadata for real execution mode and runtime status in `src/rewardlab/schemas/experiment_run.py` and `src/rewardlab/schemas/runtime_status.py`
-- [ ] T009 Implement persistence helpers for experiment runs and stored robustness assessments in `src/rewardlab/persistence/session_repository.py`
-- [ ] T010 [P] Add foundational unit coverage for reward loading, artifact manifests, and experiment-run persistence in `tests/unit/test_real_execution_foundations.py`
+- [x] T005 Implement reward program loading and validation in `src/rewardlab/experiments/reward_program.py`
+- [x] T006 [P] Implement run artifact bundle writing in `src/rewardlab/experiments/artifacts.py`
+- [x] T007 Implement actual experiment execution coordination in `src/rewardlab/experiments/execution_service.py`
+- [x] T008 [P] Extend experiment run metadata for real execution mode and runtime status in `src/rewardlab/schemas/experiment_run.py` and `src/rewardlab/schemas/runtime_status.py`
+- [x] T009 Implement persistence helpers for experiment runs and stored robustness assessments in `src/rewardlab/persistence/session_repository.py`
+- [x] T010 [P] Add foundational unit coverage for reward loading, artifact manifests, and experiment-run persistence in `tests/unit/test_real_execution_foundations.py`
 
 **Checkpoint**: Shared real-execution modules are available for backend integration.
 

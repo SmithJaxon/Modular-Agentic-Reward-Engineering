@@ -71,3 +71,7 @@ pretty = true
 [tool.pytest.ini_options]
 minversion = "8.0"
 addopts = "-ra"
+markers = [
+  "real_gymnasium: requires approved Gymnasium dependencies in the worktree .venv and an explicit opt-in flag",
+  "real_isaacgym: requires an approved Isaac Gym runtime in the worktree .venv and an explicit opt-in flag",
+]
