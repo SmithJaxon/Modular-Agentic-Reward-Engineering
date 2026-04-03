@@ -33,7 +33,7 @@ Python 3.12: Follow standard conventions
 
 - Active worktree for this thread: `C:\Users\smith\LocalOnlyClasses\AdvAi\Project-agent-autonomous-pass`
 - After worktree creation, all edits, tests, temporary files, virtual environments, and generated artifacts for this thread MUST stay inside the active worktree.
-- The execution target is the full backlog in `specs/001-iterative-reward-design/tasks.md`. The agent should proceed phase by phase, chunk by chunk, without waiting for user input unless a hard approval gate is reached.
+- The execution target is the active follow-on backlog for this thread. `specs/001-iterative-reward-design/tasks.md` is complete in this worktree, and the current remaining implementation backlog is `specs/003-real-experiment-readiness/tasks.md`.
 - For each chunk, the default loop is: confirm scope, add or update tests, implement or revise code, run the smallest relevant validation set, fix failures, rerun validation, then advance only when the chunk is stable.
 - Use sub-agents aggressively for independent tasks with disjoint file ownership. Keep shared-file work, critical-path integration, and final verification in the main agent.
 - The agent SHOULD make frequent, meaningful commits during execution rather than carrying large uncommitted batches for long periods.
