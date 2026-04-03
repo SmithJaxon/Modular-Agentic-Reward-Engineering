@@ -19,6 +19,7 @@ class SessionStatus(StrEnum):
     Enumerate exported terminal and resumable session states.
     """
 
+    RUNNING = "running"
     PAUSED = "paused"
     INTERRUPTED = "interrupted"
     COMPLETED = "completed"
@@ -73,7 +74,7 @@ class SessionReport(BaseModel):
 
     session_id: str = Field(min_length=1)
     status: SessionStatus
-    stop_reason: StopReason
+    stop_reason: StopReason | None
     environment_backend: EnvironmentBackend
     best_candidate: BestCandidateReport
     iterations: list[IterationReport] = Field(min_length=1)

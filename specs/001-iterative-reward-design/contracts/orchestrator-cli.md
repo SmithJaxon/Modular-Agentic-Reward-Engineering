@@ -107,8 +107,12 @@ Required arguments:
 - `--session-id <id>`
 
 Optional arguments:
-- `--format <json|markdown>`
+- `--json`
 - `--output <path>`
+
+Success response fields:
+- `session_id`
+- `report_path`
 
 ## Error Contract
 

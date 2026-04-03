@@ -19,11 +19,18 @@
     },
     "status": {
       "type": "string",
-      "enum": ["paused", "interrupted", "completed", "failed"]
+      "enum": ["running", "paused", "interrupted", "completed", "failed"]
     },
     "stop_reason": {
-      "type": "string",
-      "enum": ["user_interrupt", "convergence", "iteration_cap", "api_failure_pause", "error"]
+      "anyOf": [
+        {
+          "type": "string",
+          "enum": ["user_interrupt", "convergence", "iteration_cap", "api_failure_pause", "error"]
+        },
+        {
+          "type": "null"
+        }
+      ]
     },
     "environment_backend": {
       "type": "string",

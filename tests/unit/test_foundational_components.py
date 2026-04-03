@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 
 from rewardlab.experiments.robustness_runner import RobustnessRunner
+from rewardlab.feedback.gating import evaluate_feedback_gate, summarize_feedback_entries
 from rewardlab.orchestrator.state_machine import (
     SessionLifecycleState,
     can_transition,
@@ -23,6 +24,7 @@ from rewardlab.schemas.experiment_run import (
     ExperimentRunStatus,
     ExperimentRunType,
 )
+from rewardlab.schemas.feedback_entry import FeedbackEntry, FeedbackSource
 from rewardlab.schemas.robustness_assessment import RobustnessAssessment
 from rewardlab.schemas.session_config import EnvironmentBackend, FeedbackGate, SessionConfig
 from rewardlab.schemas.session_report import (
@@ -111,6 +113,73 @@ def test_session_report_accepts_valid_payload() -> None:
         ],
     )
     assert report.best_candidate.candidate_id == "cand-1"
+
+
+def test_session_report_accepts_running_payload_without_stop_reason() -> None:
+    """
+    Validate running report exports can omit stop reason until termination.
+    """
+    report = SessionReport(
+        session_id="session-1",
+        status=SessionStatus.RUNNING,
+        stop_reason=None,
+        environment_backend=EnvironmentBackend.GYMNASIUM,
+        best_candidate=BestCandidateReport(
+            candidate_id="cand-1",
+            aggregate_score=0.75,
+            selection_summary="pending final gate satisfaction",
+        ),
+        iterations=[
+            IterationReport(
+                iteration_index=0,
+                candidate_id="cand-1",
+                performance_summary="iteration 0 score=0.750",
+                risk_level=RiskLevel.LOW,
+                feedback_count=0,
+            )
+        ],
+    )
+    assert report.stop_reason is None
+
+
+def test_feedback_entry_rejects_blank_comment() -> None:
+    """
+    Validate feedback entries reject whitespace-only comments.
+    """
+    with pytest.raises(ValueError):
+        FeedbackEntry(
+            feedback_id="fb-1",
+            candidate_id="cand-1",
+            source_type=FeedbackSource.HUMAN,
+            score=0.2,
+            comment="   ",
+            artifact_ref="demo://session/candidate/latest",
+            created_at="2026-04-02T00:00:00+00:00",
+        )
+
+
+def test_feedback_gate_evaluator_tracks_missing_sources() -> None:
+    """
+    Validate gate evaluation distinguishes one-channel and both-channel requirements.
+    """
+    human_only = summarize_feedback_entries(
+        "cand-1",
+        [
+            FeedbackEntry(
+                feedback_id="fb-1",
+                candidate_id="cand-1",
+                source_type=FeedbackSource.HUMAN,
+                score=0.2,
+                comment="Looks aligned.",
+                artifact_ref="demo://session/candidate/latest",
+                created_at="2026-04-02T00:00:00+00:00",
+            )
+        ],
+    )
+    assert evaluate_feedback_gate(FeedbackGate.ONE_REQUIRED, human_only).satisfied is True
+    both_required = evaluate_feedback_gate(FeedbackGate.BOTH_REQUIRED, human_only)
+    assert both_required.satisfied is False
+    assert both_required.missing_sources == (FeedbackSource.PEER,)
 
 
 def test_experiment_run_rejects_default_robustness_variant() -> None:

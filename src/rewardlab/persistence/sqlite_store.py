@@ -1,5 +1,5 @@
 """
-Summary: SQLite storage primitives for sessions and candidate metadata.
+Summary: SQLite storage primitives for sessions, candidates, reflections, and feedback.
 Created: 2026-04-02
 Last Updated: 2026-04-02
 """
@@ -90,6 +90,20 @@ class SQLiteStore:
                     summary TEXT NOT NULL,
                     proposed_changes_json TEXT NOT NULL,
                     confidence REAL NOT NULL,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY(candidate_id) REFERENCES candidates(candidate_id)
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS feedback_entries (
+                    feedback_id TEXT PRIMARY KEY,
+                    candidate_id TEXT NOT NULL,
+                    source_type TEXT NOT NULL,
+                    score REAL,
+                    comment TEXT NOT NULL,
+                    artifact_ref TEXT,
                     created_at TEXT NOT NULL,
                     FOREIGN KEY(candidate_id) REFERENCES candidates(candidate_id)
                 )
@@ -274,3 +288,74 @@ class SQLiteStore:
                     payload["created_at"],
                 ),
             )
+
+    def insert_feedback_entry(self, payload: dict[str, Any]) -> None:
+        """
+        Insert one feedback record linked to a candidate.
+
+        Args:
+            payload: Feedback values.
+        """
+        with self._connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO feedback_entries (
+                    feedback_id, candidate_id, source_type, score, comment,
+                    artifact_ref, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    payload["feedback_id"],
+                    payload["candidate_id"],
+                    payload["source_type"],
+                    payload.get("score"),
+                    payload["comment"],
+                    payload.get("artifact_ref"),
+                    payload["created_at"],
+                ),
+            )
+
+    def list_feedback_for_candidate(self, candidate_id: str) -> list[dict[str, Any]]:
+        """
+        List feedback records for a candidate in creation order.
+
+        Args:
+            candidate_id: Candidate identifier.
+
+        Returns:
+            Feedback row dictionaries.
+        """
+        with self._connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM feedback_entries
+                WHERE candidate_id = ?
+                ORDER BY created_at ASC
+                """,
+                (candidate_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def list_feedback_for_session(self, session_id: str) -> list[dict[str, Any]]:
+        """
+        List feedback records across all candidates for one session.
+
+        Args:
+            session_id: Session identifier.
+
+        Returns:
+            Feedback row dictionaries in candidate and creation order.
+        """
+        with self._connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT feedback_entries.*
+                FROM feedback_entries
+                INNER JOIN candidates
+                    ON candidates.candidate_id = feedback_entries.candidate_id
+                WHERE candidates.session_id = ?
+                ORDER BY candidates.iteration_index ASC, feedback_entries.created_at ASC
+                """,
+                (session_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]

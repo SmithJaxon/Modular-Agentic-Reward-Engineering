@@ -3,9 +3,9 @@
 ## 0. Current Implementation Scope (2026-04-02)
 
 - Implemented and verified: setup + foundational infrastructure + US1 iterative
-  session lifecycle + US2 robustness and reward-hacking detection
-- Not implemented yet: US3 feedback channels
-- Phase 5 execution guide: `specs/001-iterative-reward-design/phase5-handoff.md`
+  session lifecycle + US2 robustness and reward-hacking detection + US3 human
+  and peer feedback gating
+- Next target: Phase 6 polish and runtime validation evidence capture
 
 ## 1. Prerequisites
 
@@ -33,6 +33,7 @@ venv\Scripts\python.exe -m mypy src
 ```powershell
 venv\Scripts\python.exe -m pytest tests/contract/test_session_lifecycle_cli.py -q
 venv\Scripts\python.exe -m pytest tests/contract/test_backend_adapters.py -q
+venv\Scripts\python.exe -m pytest tests/contract/test_feedback_cli.py -q
 venv\Scripts\python.exe -m pytest tests/unit/test_foundational_components.py -q
 venv\Scripts\python.exe tools/quality/validate_contracts.py
 ```
@@ -47,6 +48,8 @@ Expected result:
 venv\Scripts\python.exe -m pytest tests/integration/test_backend_selection.py -q
 venv\Scripts\python.exe -m pytest tests/integration/test_reward_hack_probes.py -q
 venv\Scripts\python.exe -m pytest tests/integration/test_iteration_loop.py -q
+venv\Scripts\python.exe -m pytest tests/integration/test_feedback_gating.py -q
+venv\Scripts\python.exe -m pytest tests/integration/test_feedback_conflicts.py -q
 venv\Scripts\python.exe -m pytest tests/e2e/test_interrupt_best_candidate.py -q
 ```
 
@@ -95,11 +98,38 @@ Then run one step:
 rewardlab session step --session-id <SESSION_ID> --json
 ```
 
+Attach human feedback for the returned candidate:
+
+```powershell
+rewardlab feedback submit-human `
+  --session-id <SESSION_ID> `
+  --candidate-id <CANDIDATE_ID> `
+  --comment "Observed stable recovery after perturbations." `
+  --score 0.20 `
+  --artifact-ref artifacts/cartpole-demo.mp4 `
+  --json
+```
+
+Request isolated peer feedback for the same candidate:
+
+```powershell
+rewardlab feedback request-peer `
+  --session-id <SESSION_ID> `
+  --candidate-id <CANDIDATE_ID> `
+  --json
+```
+
 Then export the current report:
 
 ```powershell
 rewardlab session report --session-id <SESSION_ID> --json
 ```
+
+Expected result:
+- Report iteration entries include feedback counts and compact feedback summaries.
+- When `feedback_gate` is `one_required` or `both_required`, the exported report
+  marks the final recommendation as pending until the selected candidate has the
+  required review channels.
 
 ## 6. Validate Pause/Resume and Interrupt Recovery
 
@@ -130,15 +160,16 @@ Mandatory review checks:
 - Function/method headers cover all non-trivial routines.
 - Dead code cleanup pass completed and verified in code review.
 
-## 8. Phase 5 Development Bootstrap
+## 8. Phase 6 Development Bootstrap
 
-Run the complete, minimal baseline before starting US3 work:
+Phase 5 is implemented. Use this baseline before Phase 6 work:
 
 ```powershell
 venv\Scripts\python.exe -m ruff check src tests tools
 venv\Scripts\python.exe -m mypy src
-venv\Scripts\python.exe -m pytest tests/unit/test_foundational_components.py tests/contract/test_session_lifecycle_cli.py tests/contract/test_backend_adapters.py tests/integration/test_backend_selection.py tests/integration/test_reward_hack_probes.py tests/integration/test_iteration_loop.py tests/e2e/test_interrupt_best_candidate.py -q -p no:cacheprovider -p no:tmpdir
+venv\Scripts\python.exe -m pytest tests/unit/test_foundational_components.py tests/contract/test_session_lifecycle_cli.py tests/contract/test_backend_adapters.py tests/contract/test_feedback_cli.py tests/integration/test_backend_selection.py tests/integration/test_reward_hack_probes.py tests/integration/test_iteration_loop.py tests/integration/test_feedback_gating.py tests/integration/test_feedback_conflicts.py tests/e2e/test_interrupt_best_candidate.py -q -p no:cacheprovider -p no:tmpdir
 ```
 
-Then execute the dependency-ordered Phase 5 chunks in:
-`specs/001-iterative-reward-design/phase5-handoff.md`.
+Then move into the Phase 6 polish and runtime-validation tasks in:
+`specs/001-iterative-reward-design/tasks.md` and
+`specs/001-iterative-reward-design/phase6-handoff.md`.

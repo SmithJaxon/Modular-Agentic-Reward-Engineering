@@ -2,7 +2,7 @@
 
 **Feature Branch**: `001-iterative-reward-design`  
 **Created**: 2026-04-02  
-**Status**: In Progress (Phases 1-4 implemented on 2026-04-02; Phase 5 planned next)  
+**Status**: In Progress (Phases 1-5 implemented on 2026-04-02; Phase 6 remains for polish, runtime validation, and completion evidence capture)  
 **Input**: User description: "Create a pipeline that iteratively improves reinforcement learning reward functions through automated experiments, reflection, robustness checks against reward hacking, human feedback from visual demonstrations, and external peer-agent feedback until convergence or user interruption."
 
 ## Clarifications

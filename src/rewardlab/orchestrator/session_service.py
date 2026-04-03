@@ -1,16 +1,24 @@
 """
-Summary: Session lifecycle orchestration service for start, step, stop, and resume flows.
+Summary: Session lifecycle orchestration service for session, feedback, and reporting flows.
 Created: 2026-04-02
 Last Updated: 2026-04-02
 """
 
 from __future__ import annotations
 
+import inspect
 from pathlib import Path
 from typing import Any
 
 from rewardlab.experiments.backends.base import ExperimentInput
 from rewardlab.experiments.robustness_runner import RobustnessRunner
+from rewardlab.feedback.gating import (
+    CandidateFeedbackState,
+    evaluate_feedback_gate,
+    summarize_feedback_by_candidate,
+)
+from rewardlab.feedback.human_feedback_service import HumanFeedbackService
+from rewardlab.feedback.peer_feedback_client import PeerFeedbackClient, PeerReviewContext
 from rewardlab.orchestrator.checkpointing import build_checkpoint_payload
 from rewardlab.orchestrator.iteration_engine import IterationEngine
 from rewardlab.orchestrator.reporting import build_report_payload, write_report
@@ -19,9 +27,10 @@ from rewardlab.orchestrator.state_machine import (
     ensure_transition,
 )
 from rewardlab.persistence.session_repository import SessionRepository
+from rewardlab.schemas.feedback_entry import FeedbackEntry, FeedbackSource
 from rewardlab.schemas.robustness_assessment import RiskLevel
-from rewardlab.schemas.session_config import EnvironmentBackend, SessionConfig
-from rewardlab.selection.policy import CandidateSignal, select_candidate
+from rewardlab.schemas.session_config import EnvironmentBackend, FeedbackGate, SessionConfig
+from rewardlab.selection.policy import CandidateSignal, SelectionOutcome, select_candidate
 
 
 class SessionService:
@@ -34,6 +43,8 @@ class SessionService:
         repository: SessionRepository,
         iteration_engine: IterationEngine | None = None,
         robustness_runner: RobustnessRunner | None = None,
+        human_feedback_service: HumanFeedbackService | None = None,
+        peer_feedback_client: PeerFeedbackClient | None = None,
     ) -> None:
         """
         Initialize session service dependencies.
@@ -42,10 +53,16 @@ class SessionService:
             repository: Session repository facade.
             iteration_engine: Optional iteration engine override.
             robustness_runner: Optional robustness runner override.
+            human_feedback_service: Optional human feedback service override.
+            peer_feedback_client: Optional peer feedback client override.
         """
         self._repository = repository
         self._iteration_engine = iteration_engine or IterationEngine()
         self._robustness_runner = robustness_runner or RobustnessRunner()
+        self._human_feedback_service = human_feedback_service or HumanFeedbackService(
+            repository=repository
+        )
+        self._peer_feedback_client = peer_feedback_client or PeerFeedbackClient()
 
     def start_session(
         self,
@@ -74,6 +91,14 @@ class SessionService:
             "candidate_primary_scores": {},
             "candidate_performance_summaries": {},
             "robustness_assessments": {},
+            "candidate_feedback_counts": {},
+            "candidate_feedback_summaries": {},
+            "candidate_feedback_bonuses": {},
+            "eligible_best_candidate_id": None,
+            "eligible_selection_summary": None,
+            "eligible_minor_robustness_risk_accepted": False,
+            "pending_feedback_summary": None,
+            "demo_artifacts": {},
             "selected_minor_robustness_risk_accepted": False,
         }
         self._repository.update_session(created["session_id"], metadata=metadata)
@@ -100,12 +125,24 @@ class SessionService:
         metadata = dict(session.get("metadata", {}))
         baseline_reward = metadata.get("baseline_reward_definition", "reward = 0")
         iteration_index = int(metadata.get("iteration_index", -1)) + 1
+        pending_feedback_summary = str(metadata.get("pending_feedback_summary") or "").strip()
 
-        result = self._iteration_engine.run_iteration(
-            session=session,
-            iteration_index=iteration_index,
-            baseline_reward_definition=baseline_reward,
-        )
+        run_iteration_parameters = inspect.signature(
+            self._iteration_engine.run_iteration
+        ).parameters
+        if "feedback_summary" in run_iteration_parameters:
+            result = self._iteration_engine.run_iteration(
+                session=session,
+                iteration_index=iteration_index,
+                baseline_reward_definition=baseline_reward,
+                feedback_summary=pending_feedback_summary,
+            )
+        else:
+            result = self._iteration_engine.run_iteration(
+                session=session,
+                iteration_index=iteration_index,
+                baseline_reward_definition=baseline_reward,
+            )
         candidate = self._repository.add_candidate(
             session_id=session_id,
             iteration_index=iteration_index,
@@ -160,13 +197,19 @@ class SessionService:
         robustness_assessments = dict(metadata.get("robustness_assessments", {}))
         robustness_assessments[candidate["candidate_id"]] = robustness.assessment.model_dump()
 
+        feedback_states = self._list_feedback_states(session_id)
         candidates = self._repository.list_candidates(session_id)
-        selection = select_candidate(
-            self._build_candidate_signals(
-                candidates=candidates,
-                primary_scores=candidate_primary_scores,
-                assessments=robustness_assessments,
-            )
+        signals = self._build_candidate_signals(
+            candidates=candidates,
+            primary_scores=candidate_primary_scores,
+            assessments=robustness_assessments,
+            feedback_states=feedback_states,
+        )
+        selection = select_candidate(signals)
+        eligible_selection = self._select_eligible_candidate(
+            gate=FeedbackGate(session["feedback_gate"]),
+            signals=signals,
+            feedback_states=feedback_states,
         )
         self._repository.set_best_candidate(session_id, selection.selected_signal.candidate_id)
 
@@ -187,6 +230,31 @@ class SessionService:
             "candidate_primary_scores": candidate_primary_scores,
             "candidate_performance_summaries": performance_summaries,
             "robustness_assessments": robustness_assessments,
+            "candidate_feedback_counts": {
+                key: value.feedback_count for key, value in feedback_states.items()
+            },
+            "candidate_feedback_summaries": {
+                key: value.summary for key, value in feedback_states.items()
+            },
+            "candidate_feedback_bonuses": {
+                key: {
+                    "human_feedback_bonus": value.human_feedback_bonus,
+                    "peer_feedback_bonus": value.peer_feedback_bonus,
+                }
+                for key, value in feedback_states.items()
+            },
+            "eligible_best_candidate_id": (
+                eligible_selection.selected_signal.candidate_id if eligible_selection else None
+            ),
+            "eligible_selection_summary": (
+                eligible_selection.selection_summary if eligible_selection else None
+            ),
+            "eligible_minor_robustness_risk_accepted": (
+                eligible_selection.selected_signal.minor_robustness_risk_accepted
+                if eligible_selection
+                else False
+            ),
+            "pending_feedback_summary": None,
             "selection_summary": selection.selection_summary,
             "selected_minor_robustness_risk_accepted": (
                 selection.selected_signal.minor_robustness_risk_accepted
@@ -214,6 +282,7 @@ class SessionService:
             "status": updated_session["status"],
             "best_candidate_id": updated_session["best_candidate_id"],
             "performance_summary": result.performance_summary,
+            "feedback_summary": result.feedback_summary,
         }
 
     def pause_session(self, session_id: str) -> dict[str, Any]:
@@ -321,6 +390,91 @@ class SessionService:
         path = write_report(report, report_dir)
         return {"session_id": session_id, "report_path": str(path)}
 
+    def submit_human_feedback(
+        self,
+        session_id: str,
+        candidate_id: str,
+        comment: str,
+        score: float | None = None,
+        artifact_ref: str | None = None,
+    ) -> dict[str, Any]:
+        """
+        Persist human feedback and refresh gate-aware recommendation metadata.
+
+        Args:
+            session_id: Session identifier.
+            candidate_id: Candidate identifier.
+            comment: Reviewer comment text.
+            score: Optional normalized score delta.
+            artifact_ref: Optional demonstration artifact reference.
+
+        Returns:
+            Persisted feedback metadata dictionary.
+        """
+        session = self._require_session(session_id)
+        candidate = self._require_candidate(candidate_id)
+        payload = self._human_feedback_service.submit_feedback(
+            session=session,
+            candidate=candidate,
+            comment=comment,
+            score=score,
+            artifact_ref=artifact_ref,
+        )
+        self._refresh_feedback_state(session_id, pending_candidate_id=candidate_id)
+        return payload
+
+    def request_peer_feedback(self, session_id: str, candidate_id: str) -> dict[str, Any]:
+        """
+        Generate deterministic peer feedback from isolated candidate context.
+
+        Args:
+            session_id: Session identifier.
+            candidate_id: Candidate identifier.
+
+        Returns:
+            Persisted peer feedback metadata dictionary.
+        """
+        session = self._require_session(session_id)
+        candidate = self._require_candidate(candidate_id)
+        if candidate["session_id"] != session_id:
+            raise RuntimeError(f"candidate {candidate_id} does not belong to session {session_id}")
+        metadata = dict(session.get("metadata", {}))
+        context = PeerReviewContext(
+            candidate_id=candidate_id,
+            iteration_index=int(candidate["iteration_index"]),
+            objective_text=session["objective_text"],
+            environment_backend=EnvironmentBackend(session["environment_backend"]),
+            performance_summary=str(
+                dict(metadata.get("candidate_performance_summaries", {})).get(
+                    candidate_id,
+                    (
+                        f"iteration {candidate['iteration_index']} "
+                        f"score={candidate['aggregate_score']:.3f}"
+                    ),
+                )
+            ),
+            risk_level=RiskLevel(
+                dict(metadata.get("robustness_assessments", {}))
+                .get(candidate_id, {})
+                .get("risk_level", RiskLevel.LOW.value)
+            ),
+            artifact_refs=tuple(
+                str(value)
+                for value in dict(metadata.get("demo_artifacts", {})).get(candidate_id, [])
+            ),
+        )
+        draft = self._peer_feedback_client.request_feedback(context)
+        payload = self._repository.add_feedback(
+            candidate_id=candidate_id,
+            source_type=FeedbackSource.PEER.value,
+            comment=draft.comment,
+            score=draft.score,
+            artifact_ref=draft.artifact_ref,
+        )
+        FeedbackEntry.model_validate(payload)
+        self._refresh_feedback_state(session_id, pending_candidate_id=candidate_id)
+        return payload
+
     def _require_session(self, session_id: str) -> dict[str, Any]:
         """
         Fetch session and raise explicit error when missing.
@@ -336,11 +490,27 @@ class SessionService:
             raise RuntimeError(f"session {session_id} not found")
         return session
 
+    def _require_candidate(self, candidate_id: str) -> dict[str, Any]:
+        """
+        Fetch candidate and raise explicit error when missing.
+
+        Args:
+            candidate_id: Candidate identifier.
+
+        Returns:
+            Candidate metadata dictionary.
+        """
+        candidate = self._repository.get_candidate(candidate_id)
+        if candidate is None:
+            raise RuntimeError(f"candidate {candidate_id} not found")
+        return candidate
+
     @staticmethod
     def _build_candidate_signals(
         candidates: list[dict[str, Any]],
         primary_scores: dict[str, float],
         assessments: dict[str, dict[str, Any]],
+        feedback_states: dict[str, CandidateFeedbackState],
     ) -> list[CandidateSignal]:
         """
         Rebuild policy inputs from stored candidate and robustness metadata.
@@ -349,6 +519,7 @@ class SessionService:
             candidates: Persisted candidate rows.
             primary_scores: Primary score mapping per candidate.
             assessments: Robustness assessment mapping per candidate.
+            feedback_states: Aggregated feedback state mapping per candidate.
 
         Returns:
             Candidate signal values ready for policy selection.
@@ -358,6 +529,10 @@ class SessionService:
             candidate_id = candidate["candidate_id"]
             primary_score = float(primary_scores.get(candidate_id, candidate["aggregate_score"]))
             assessment = assessments.get(candidate_id, {})
+            feedback_state = feedback_states.get(
+                candidate_id,
+                CandidateFeedbackState(candidate_id=candidate_id),
+            )
             risk_level_value = str(assessment.get("risk_level", RiskLevel.LOW.value))
             tradeoff_rationale = None
             if risk_level_value == RiskLevel.MEDIUM.value:
@@ -370,8 +545,131 @@ class SessionService:
                     candidate_id=candidate_id,
                     primary_performance=primary_score,
                     robustness_bonus=float(candidate["aggregate_score"]) - primary_score,
+                    human_feedback_bonus=feedback_state.human_feedback_bonus,
+                    peer_feedback_bonus=feedback_state.peer_feedback_bonus,
                     risk_level=RiskLevel(risk_level_value),
                     tradeoff_rationale=tradeoff_rationale,
                 )
             )
         return signals
+
+    def _list_feedback_states(self, session_id: str) -> dict[str, CandidateFeedbackState]:
+        """
+        Load and summarize persisted feedback entries for a session.
+
+        Args:
+            session_id: Session identifier.
+
+        Returns:
+            Mapping of candidate identifier to aggregated feedback state.
+        """
+        entries = [
+            FeedbackEntry.model_validate(payload)
+            for payload in self._repository.list_feedback_for_session(session_id)
+        ]
+        return summarize_feedback_by_candidate(entries)
+
+    @staticmethod
+    def _select_eligible_candidate(
+        gate: FeedbackGate,
+        signals: list[CandidateSignal],
+        feedback_states: dict[str, CandidateFeedbackState],
+    ) -> SelectionOutcome | None:
+        """
+        Select the best candidate among those satisfying the configured feedback gate.
+
+        Args:
+            gate: Session feedback gate configuration.
+            signals: Policy candidate signal values.
+            feedback_states: Aggregated feedback state mapping per candidate.
+
+        Returns:
+            Selection outcome for eligible candidates or None when none qualify.
+        """
+        eligible = [
+            signal
+            for signal in signals
+            if evaluate_feedback_gate(
+                gate,
+                feedback_states.get(
+                    signal.candidate_id,
+                    CandidateFeedbackState(candidate_id=signal.candidate_id),
+                ),
+            ).satisfied
+        ]
+        if not eligible:
+            return None
+        return select_candidate(eligible)
+
+    def _refresh_feedback_state(
+        self,
+        session_id: str,
+        pending_candidate_id: str | None = None,
+    ) -> None:
+        """
+        Recompute feedback summaries and gate-aware recommendation metadata.
+
+        Args:
+            session_id: Session identifier.
+            pending_candidate_id: Candidate whose feedback should inform the next step.
+        """
+        session = self._require_session(session_id)
+        metadata = dict(session.get("metadata", {}))
+        feedback_states = self._list_feedback_states(session_id)
+        candidates = self._repository.list_candidates(session_id)
+        metadata["candidate_feedback_counts"] = {
+            key: value.feedback_count for key, value in feedback_states.items()
+        }
+        metadata["candidate_feedback_summaries"] = {
+            key: value.summary for key, value in feedback_states.items()
+        }
+        metadata["candidate_feedback_bonuses"] = {
+            key: {
+                "human_feedback_bonus": value.human_feedback_bonus,
+                "peer_feedback_bonus": value.peer_feedback_bonus,
+            }
+            for key, value in feedback_states.items()
+        }
+        if pending_candidate_id is not None:
+            pending_state = feedback_states.get(
+                pending_candidate_id,
+                CandidateFeedbackState(candidate_id=pending_candidate_id),
+            )
+            metadata["pending_feedback_summary"] = pending_state.summary
+
+        if candidates:
+            signals = self._build_candidate_signals(
+                candidates=candidates,
+                primary_scores=dict(metadata.get("candidate_primary_scores", {})),
+                assessments=dict(metadata.get("robustness_assessments", {})),
+                feedback_states=feedback_states,
+            )
+            selection = select_candidate(signals)
+            eligible_selection = self._select_eligible_candidate(
+                gate=FeedbackGate(session["feedback_gate"]),
+                signals=signals,
+                feedback_states=feedback_states,
+            )
+            self._repository.set_best_candidate(session_id, selection.selected_signal.candidate_id)
+            metadata["selection_summary"] = selection.selection_summary
+            metadata["selected_minor_robustness_risk_accepted"] = (
+                selection.selected_signal.minor_robustness_risk_accepted
+            )
+            if selection.selected_signal.tradeoff_rationale is not None:
+                metadata["selected_tradeoff_rationale"] = (
+                    selection.selected_signal.tradeoff_rationale
+                )
+            else:
+                metadata.pop("selected_tradeoff_rationale", None)
+            metadata["eligible_best_candidate_id"] = (
+                eligible_selection.selected_signal.candidate_id if eligible_selection else None
+            )
+            metadata["eligible_selection_summary"] = (
+                eligible_selection.selection_summary if eligible_selection else None
+            )
+            metadata["eligible_minor_robustness_risk_accepted"] = (
+                eligible_selection.selected_signal.minor_robustness_risk_accepted
+                if eligible_selection
+                else False
+            )
+        self._repository.update_session(session_id, metadata=metadata)

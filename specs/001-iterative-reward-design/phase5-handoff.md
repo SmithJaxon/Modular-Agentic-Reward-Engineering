@@ -1,8 +1,9 @@
 # Phase 5 Handoff: Human and External Peer Feedback
 
+**Status**: Completed on 2026-04-02 and superseded by `specs/001-iterative-reward-design/phase6-handoff.md`  
 **Prepared**: 2026-04-02  
 **Feature**: `001-iterative-reward-design`  
-**Current implementation branch**: `001-iterative-reward-design-impl-p4`  
+**Prepared from implementation branch**: `001-iterative-reward-design-impl-p4`  
 **Target integration branch for next work**: `iterative-main`
 
 ## 1. Scope for the Next Thread
@@ -39,6 +40,12 @@ venv\Scripts\python.exe -m pytest tests\unit tests\contract tests\integration te
 venv\Scripts\python.exe tools\quality\validate_contracts.py
 venv\Scripts\python.exe tools\quality\check_headers.py src\rewardlab tests tools
 ```
+
+Important completion note:
+
+- Deterministic backend coverage is in place today, but full project completion
+  still requires the real-runtime validation work now tracked in Phase 6
+  (`T066`, `T067`, with evidence captured by `T064`).
 
 ## 3. Module Map (Where Things Are)
 
@@ -223,6 +230,8 @@ Before marking US3 done:
 - New/updated public functions and methods have docstrings
 - Dead-code cleanup pass completed
 - `README.md` and `quickstart.md` updated if operator flows or outputs changed
+- Phase 6 real-runtime validation remains queued; do not treat US3 completion as
+  equivalent to full project completion
 
 ## 8. Next Agent Start Steps
 

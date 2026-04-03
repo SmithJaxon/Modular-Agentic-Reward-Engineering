@@ -1,5 +1,5 @@
 """
-Summary: Repository facade for session lifecycle, candidates, reflections, and events.
+Summary: Repository facade for session lifecycle, candidates, reflections, feedback, and events.
 Created: 2026-04-02
 Last Updated: 2026-04-02
 """
@@ -139,6 +139,18 @@ class SessionRepository:
         """
         return self._store.list_candidates(session_id)
 
+    def get_candidate(self, candidate_id: str) -> dict[str, Any] | None:
+        """
+        Fetch one candidate by identifier.
+
+        Args:
+            candidate_id: Candidate identifier.
+
+        Returns:
+            Candidate metadata row or None.
+        """
+        return self._store.get_candidate(candidate_id)
+
     def update_candidate(self, candidate_id: str, **fields: Any) -> None:
         """
         Update mutable fields on a candidate record.
@@ -237,3 +249,68 @@ class SessionRepository:
             Parsed checkpoint payload or None.
         """
         return self._events.load_checkpoint(session_id)
+
+    def add_feedback(
+        self,
+        candidate_id: str,
+        source_type: str,
+        comment: str,
+        score: float | None = None,
+        artifact_ref: str | None = None,
+    ) -> dict[str, Any]:
+        """
+        Insert feedback metadata and emit a feedback event.
+
+        Args:
+            candidate_id: Candidate identifier.
+            source_type: Stable reviewer channel.
+            comment: Reviewer comment text.
+            score: Optional normalized score delta.
+            artifact_ref: Optional linked visual artifact reference.
+
+        Returns:
+            Feedback metadata dictionary.
+        """
+        candidate = self._store.get_candidate(candidate_id)
+        if candidate is None:
+            raise RuntimeError(f"candidate {candidate_id} not found")
+        payload = {
+            "feedback_id": f"fb-{uuid4().hex[:12]}",
+            "candidate_id": candidate_id,
+            "source_type": source_type,
+            "score": score,
+            "comment": comment,
+            "artifact_ref": artifact_ref,
+            "created_at": datetime.now(UTC).isoformat(),
+        }
+        self._store.insert_feedback_entry(payload)
+        self._events.append(
+            "feedback.added",
+            payload,
+            session_id=candidate["session_id"],
+        )
+        return payload
+
+    def list_feedback_for_candidate(self, candidate_id: str) -> list[dict[str, Any]]:
+        """
+        List feedback rows for a candidate.
+
+        Args:
+            candidate_id: Candidate identifier.
+
+        Returns:
+            Feedback metadata rows.
+        """
+        return self._store.list_feedback_for_candidate(candidate_id)
+
+    def list_feedback_for_session(self, session_id: str) -> list[dict[str, Any]]:
+        """
+        List feedback rows for all candidates in a session.
+
+        Args:
+            session_id: Session identifier.
+
+        Returns:
+            Feedback metadata rows.
+        """
+        return self._store.list_feedback_for_session(session_id)

@@ -27,6 +27,7 @@ class IterationResult:
     reflection_summary: str
     proposed_changes: list[str]
     confidence: float
+    feedback_summary: str = ""
 
 
 class IterationEngine:
@@ -39,6 +40,7 @@ class IterationEngine:
         session: dict[str, Any],
         iteration_index: int,
         baseline_reward_definition: str,
+        feedback_summary: str = "",
     ) -> IterationResult:
         """
         Run one evaluate-reflect-revise iteration for a session.
@@ -47,6 +49,7 @@ class IterationEngine:
             session: Session metadata dictionary.
             iteration_index: Zero-based iteration index.
             baseline_reward_definition: Seed reward definition text.
+            feedback_summary: Optional latest feedback context to fold into revision.
 
         Returns:
             Iteration result payload.
@@ -75,14 +78,26 @@ class IterationEngine:
                 f"iteration {iteration_index + 1}."
             ),
         ]
+        normalized_feedback_summary = feedback_summary.strip()
+        change_summary = f"Iteration {iteration_index} reward revision"
+        if normalized_feedback_summary:
+            change_summary = (
+                f"{change_summary} informed by feedback: {normalized_feedback_summary}"
+            )
+            proposed_changes.insert(
+                0,
+                "Address reviewer feedback before the next iteration: "
+                f"{normalized_feedback_summary}",
+            )
         return IterationResult(
             reward_definition=reward_definition,
-            change_summary=f"Iteration {iteration_index} reward revision",
+            change_summary=change_summary,
             score=performance.score,
             performance_summary=performance.summary,
             reflection_summary=reflection.summary,
             proposed_changes=proposed_changes,
             confidence=confidence,
+            feedback_summary=normalized_feedback_summary,
         )
 
     @staticmethod

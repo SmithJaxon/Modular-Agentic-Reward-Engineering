@@ -6,16 +6,16 @@ robustness checks, and human or peer feedback gates.
 
 ## Current Status (2026-04-02)
 
-- Implemented: Phase 1 (setup), Phase 2 (foundational infra), Phase 3 (US1/MVP loop), Phase 4 (US2 robustness and reward-hacking detection)
-- Next target: Phase 5 (US3 human and peer feedback integration)
-- Phase 4 implementation branch: `001-iterative-reward-design-impl-p4`
+- Implemented: Phase 1 (setup), Phase 2 (foundational infra), Phase 3 (US1/MVP loop), Phase 4 (US2 robustness and reward-hacking detection), Phase 5 (US3 human and peer feedback integration)
+- Next target: Phase 6 (polish, validation runner, and runtime evidence capture)
+- Phase 5 implementation branch: `001-iterative-reward-design-impl-p5`
 
 ## Primary Docs
 
 - Feature spec: `specs/001-iterative-reward-design/spec.md`
 - Implementation plan: `specs/001-iterative-reward-design/plan.md`
 - Task board: `specs/001-iterative-reward-design/tasks.md`
-- Phase 5 handoff and execution plan: `specs/001-iterative-reward-design/phase5-handoff.md`
+- Phase 6 handoff: `specs/001-iterative-reward-design/phase6-handoff.md`
 - Operator quickstart: `specs/001-iterative-reward-design/quickstart.md`
 
 ## Local Setup (Project-Scoped Venv)
@@ -39,9 +39,13 @@ venv\Scripts\python.exe tools\quality\check_headers.py src\rewardlab tests tools
 By default the CLI writes session state under `.rewardlab/`:
 
 - `rewardlab.sqlite3` for metadata
-- `events/*.jsonl` for append-only event logs
+- `events.jsonl` for append-only event logs
 - `checkpoints/*.json` for interruption/resume snapshots
 - `reports/*.json` for exported session reports
+
+Feedback-enabled sessions also persist reviewer entries in SQLite and thread
+demo artifact references plus gate-ready recommendation summaries through
+exported session reports.
 
 ## Engineering Standards
 

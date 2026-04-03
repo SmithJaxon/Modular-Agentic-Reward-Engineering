@@ -44,6 +44,13 @@ class CandidateSignal:
         """
         return self.risk_level is RiskLevel.MEDIUM and self.tradeoff_rationale is not None
 
+    @property
+    def has_conflicting_feedback(self) -> bool:
+        """
+        Report whether human and peer feedback bonuses point in opposite directions.
+        """
+        return self.human_feedback_bonus * self.peer_feedback_bonus < 0
+
 
 @dataclass(slots=True, frozen=True)
 class SelectionOutcome:
@@ -89,6 +96,13 @@ def select_candidate(candidates: list[CandidateSignal]) -> SelectionOutcome:
         f"{best.aggregate_score:.3f} from primary performance {best.primary_performance:.3f} "
         f"and robustness bonus {best.robustness_bonus:+.3f}."
     )
+    if best.human_feedback_bonus or best.peer_feedback_bonus:
+        summary = (
+            f"{summary} Feedback bonuses human {best.human_feedback_bonus:+.3f}, "
+            f"peer {best.peer_feedback_bonus:+.3f}."
+        )
+    if best.has_conflicting_feedback:
+        summary = f"{summary} Conflicting human and peer feedback remained under review."
     if best.minor_robustness_risk_accepted:
         summary = f"{summary} Minor robustness risk accepted: {best.tradeoff_rationale}"
     elif best.risk_level is RiskLevel.HIGH:

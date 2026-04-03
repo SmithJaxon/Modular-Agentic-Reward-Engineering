@@ -13,17 +13,20 @@ phase can be validated independently before full-session runs.
 
 ## Current Delivery Status (2026-04-02)
 
-- Completed implementation phases: 1, 2, 3, and 4 (tasks `T001`-`T045`)
-- Current implementation branch: `001-iterative-reward-design-impl-p4`
-- Next implementation target: Phase 5 / US3 (`T046`-`T057`)
-- Detailed handoff for next thread: `/specs/001-iterative-reward-design/phase5-handoff.md`
+- Completed implementation phases: 1, 2, 3, 4, and 5 (tasks `T001`-`T057`)
+- Current implementation branch: `001-iterative-reward-design-impl-p5`
+- Next implementation target: Phase 6 (`T058`-`T067`)
+- Detailed handoff for next thread: `/specs/001-iterative-reward-design/phase6-handoff.md`
+- Full completion remains gated on Phase 6 real-runtime validation against actual
+  Gymnasium and Isaac Gym environments on supported machines.
 
 ## Technical Context
 
 **Language/Version**: Python 3.12
 **Primary Dependencies**: PyTorch, Gymnasium, Isaac Gym, OpenAI API client, Pydantic, Typer
 **Storage**: Local artifacts (`JSONL`, `JSON`, rendered media) and lightweight SQLite metadata
-**Testing**: pytest, pytest-xdist, hypothesis, pytest-cov, mypy, ruff
+**Testing**: pytest, pytest-xdist, hypothesis, pytest-cov, mypy, ruff, deterministic
+adapter coverage plus environment-gated real Gymnasium and Isaac Gym runtime validation
 **Target Platform**: Linux or macOS workstation, optional CUDA GPU
 **Project Type**: Modular Python CLI application for RL experiment orchestration
 **Performance Goals**: Complete a full iteration cycle in <= 120 seconds in local baseline environments; produce interruption-safe best-candidate export in <= 60 seconds
@@ -54,6 +57,7 @@ specs/001-iterative-reward-design/
 |-- quickstart.md
 |-- phase4-handoff.md
 |-- phase5-handoff.md
+|-- phase6-handoff.md
 |-- contracts/
 |   |-- orchestrator-cli.md
 |   |-- session-config.schema.json
@@ -111,6 +115,8 @@ feedback channels, and verification tooling.
 - PASS: Contracts and data model define testable interfaces before implementation.
 - PASS: Header requirements are reflected in quickstart quality gates.
 - PASS: Dead-code cleanup is included as a mandatory pre-merge verification step.
+- PASS: Final completion criteria now explicitly require validation through real
+  Gymnasium and Isaac Gym runtimes rather than deterministic adapter-only coverage.
 
 ## Complexity Tracking
 

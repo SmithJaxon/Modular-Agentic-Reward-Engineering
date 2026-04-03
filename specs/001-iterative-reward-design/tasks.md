@@ -29,9 +29,9 @@ headers, function/method headers, and dead-code cleanup.
 
 ## Current Progress Snapshot (2026-04-02)
 
-- Completed and committed: `T001`-`T045`
-- Phase 4 status: completed on `001-iterative-reward-design-impl-p4`
-- Handoff plan for next thread: `specs/001-iterative-reward-design/phase5-handoff.md`
+- Completed and committed: `T001`-`T057`
+- Phase 5 status: completed on `001-iterative-reward-design-impl-p5`
+- Next implementation target: Phase 6 (`T058`-`T067`)
 
 ## Phase 1: Setup (Shared Infrastructure)
 
@@ -160,21 +160,21 @@ headers, function/method headers, and dead-code cleanup.
 
 ### Tests for User Story 3
 
-- [ ] T046 [P] [US3] Add CLI contract tests for `feedback submit-human` and `feedback request-peer` in `tests/contract/test_feedback_cli.py`
-- [ ] T047 [P] [US3] Add integration tests for session-level feedback gating modes in `tests/integration/test_feedback_gating.py`
-- [ ] T048 [P] [US3] Add integration tests for conflicting human/peer feedback resolution in `tests/integration/test_feedback_conflicts.py`
+- [X] T046 [P] [US3] Add CLI contract tests for `feedback submit-human` and `feedback request-peer` in `tests/contract/test_feedback_cli.py`
+- [X] T047 [P] [US3] Add integration tests for session-level feedback gating modes in `tests/integration/test_feedback_gating.py`
+- [X] T048 [P] [US3] Add integration tests for conflicting human/peer feedback resolution in `tests/integration/test_feedback_conflicts.py`
 
 ### Implementation for User Story 3
 
-- [ ] T049 [P] [US3] Implement feedback entry schema in `src/rewardlab/schemas/feedback_entry.py`
-- [ ] T050 [US3] Implement human feedback ingestion service in `src/rewardlab/feedback/human_feedback_service.py`
-- [ ] T051 [US3] Implement isolated peer feedback client in `src/rewardlab/feedback/peer_feedback_client.py`
-- [ ] T052 [US3] Implement feedback gating evaluator in `src/rewardlab/feedback/gating.py`
-- [ ] T053 [US3] Implement visual demonstration artifact tracker in `src/rewardlab/feedback/demo_artifacts.py`
-- [ ] T054 [US3] Implement feedback CLI command handlers in `src/rewardlab/cli/feedback_commands.py`
-- [ ] T055 [US3] Integrate feedback signals into iteration summaries in `src/rewardlab/orchestrator/iteration_engine.py`
-- [ ] T056 [US3] Integrate gating and feedback requirements into final recommendation path in `src/rewardlab/orchestrator/session_service.py`
-- [ ] T057 [US3] Add required file headers and function/method docstrings in `src/rewardlab/feedback/human_feedback_service.py` and `src/rewardlab/feedback/peer_feedback_client.py`
+- [X] T049 [P] [US3] Implement feedback entry schema in `src/rewardlab/schemas/feedback_entry.py`
+- [X] T050 [US3] Implement human feedback ingestion service in `src/rewardlab/feedback/human_feedback_service.py`
+- [X] T051 [US3] Implement isolated peer feedback client in `src/rewardlab/feedback/peer_feedback_client.py`
+- [X] T052 [US3] Implement feedback gating evaluator in `src/rewardlab/feedback/gating.py`
+- [X] T053 [US3] Implement visual demonstration artifact tracker in `src/rewardlab/feedback/demo_artifacts.py`
+- [X] T054 [US3] Implement feedback CLI command handlers in `src/rewardlab/cli/feedback_commands.py`
+- [X] T055 [US3] Integrate feedback signals into iteration summaries in `src/rewardlab/orchestrator/iteration_engine.py`
+- [X] T056 [US3] Integrate gating and feedback requirements into final recommendation path in `src/rewardlab/orchestrator/session_service.py`
+- [X] T057 [US3] Add required file headers and function/method docstrings in `src/rewardlab/feedback/human_feedback_service.py` and `src/rewardlab/feedback/peer_feedback_client.py`
 
 **Checkpoint**: Feedback channels and gating policies are independently testable.
 
@@ -182,16 +182,20 @@ headers, function/method headers, and dead-code cleanup.
 
 ## Phase 6: Polish & Cross-Cutting Concerns
 
-**Purpose**: Final verification hardening, cleanup, and evidence capture.
+**Purpose**: Final verification hardening, cleanup, evidence capture, and real backend runtime validation.
 
 - [ ] T058 [P] Update operator documentation and examples in `README.md` and `specs/001-iterative-reward-design/quickstart.md`
-- [ ] T059 Implement one-command validation runner in `tools/quality/run_full_validation.ps1`
+- [ ] T059 Implement one-command validation runner with deterministic and environment-gated real-runtime suites in `tools/quality/run_full_validation.ps1`
 - [ ] T060 [P] Implement end-to-end cycle-time budget test in `tests/e2e/test_iteration_cycle_budget.py`
 - [ ] T061 [P] Implement schema contract regression tests in `tests/unit/test_schema_contracts.py`
 - [ ] T062 [P] Implement header/docstring audit tests in `tests/unit/test_header_audit.py`
 - [ ] T063 Run mandatory dead-code cleanup pass for `src/rewardlab/` and `tests/`
-- [ ] T064 Execute full quality gate and record evidence in `specs/001-iterative-reward-design/verification-report.md`
+- [ ] T064 Execute full quality gate, including real Gymnasium and Isaac Gym runtime validation on supported machines, and record evidence in `specs/001-iterative-reward-design/verification-report.md`
 - [ ] T065 Update completion notes and compliance status in `specs/001-iterative-reward-design/checklists/requirements.md`
+- [ ] T066 [P] Implement real Gymnasium runtime smoke/integration validation in `tests/integration/test_gymnasium_runtime.py`
+- [ ] T067 [P] Implement real Isaac Gym runtime smoke/integration validation in `tests/integration/test_isaacgym_runtime.py`
+
+**Critical Completion Gate**: The project is not fully complete until the real-runtime validation tasks (`T066`, `T067`) have passed on supported machines and their evidence is captured by `T064`.
 
 ---
 
@@ -225,6 +229,7 @@ headers, function/method headers, and dead-code cleanup.
 - US2: T033, T034, T035 can run in parallel; T036 and T037 can run in parallel.
 - US3: T046, T047, T048 can run in parallel; T049 can run in parallel with T050/T051.
 - Polish: T058, T060, T061, T062 can run in parallel before T064.
+- Polish/runtime validation: T066 and T067 can run in parallel once the environment-gating and validation runner path from T059 is in place.
 
 ---
 
