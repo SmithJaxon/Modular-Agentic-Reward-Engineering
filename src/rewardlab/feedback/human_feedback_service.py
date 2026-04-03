@@ -47,7 +47,8 @@ class HumanFeedbackService:
             title="Human Feedback Review",
             metadata={"session_id": session_id},
         )
-        return feedback.model_copy(update={"artifact_ref": str(bundle.review_markdown_path)})
+        resolved_artifact_ref = artifact_ref or str(bundle.review_markdown_path)
+        return feedback.model_copy(update={"artifact_ref": resolved_artifact_ref})
 
 
 def _feedback_id(session_id: str, source_type: FeedbackSourceType) -> str:

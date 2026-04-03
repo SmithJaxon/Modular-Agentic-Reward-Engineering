@@ -18,6 +18,7 @@ class RiskAnalyzer:
         self,
         *,
         candidate: RewardCandidate,
+        primary_run: ExperimentRun,
         runs: list[ExperimentRun],
     ) -> RobustnessAssessment:
         """Summarize robustness degradation for a candidate across probe variants."""
@@ -25,15 +26,16 @@ class RiskAnalyzer:
         if not runs:
             raise ValueError("at least one robustness run is required")
 
-        primary_score = candidate.aggregate_score or 0.0
-        worst_variant_score = min(
-            float(run.metrics.get("total_reward", 0.0)) for run in runs
-        )
+        primary_score = _resolve_primary_score(candidate=candidate, primary_run=primary_run)
+        worst_variant_score = min(_resolve_run_score(run) for run in runs)
         degradation_ratio = _compute_degradation_ratio(primary_score, worst_variant_score)
         risk_level = _classify_risk(degradation_ratio)
         return RobustnessAssessment(
             assessment_id=f"{candidate.candidate_id}-robustness",
             candidate_id=candidate.candidate_id,
+            backend=primary_run.backend,
+            primary_run_id=primary_run.run_id,
+            probe_run_ids=[run.run_id for run in runs],
             variant_count=len(runs),
             degradation_ratio=degradation_ratio,
             risk_level=risk_level,
@@ -60,3 +62,25 @@ def _classify_risk(degradation_ratio: float) -> RiskLevel:
     if degradation_ratio >= 0.2:
         return RiskLevel.MEDIUM
     return RiskLevel.LOW
+
+
+def _resolve_primary_score(
+    *,
+    candidate: RewardCandidate,
+    primary_run: ExperimentRun,
+) -> float:
+    """Return the primary candidate score from the candidate or persisted run metrics."""
+
+    if candidate.aggregate_score is not None:
+        return candidate.aggregate_score
+    return _resolve_run_score(primary_run)
+
+
+def _resolve_run_score(run: ExperimentRun) -> float:
+    """Return the most relevant scalar score recorded on an experiment run."""
+
+    for metric_name in ("episode_reward", "total_reward", "environment_reward"):
+        value = run.metrics.get(metric_name)
+        if isinstance(value, (int, float)):
+            return float(value)
+    return 0.0

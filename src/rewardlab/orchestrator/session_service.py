@@ -1,5 +1,5 @@
 """
-Summary: Session lifecycle service coordinating MVP RewardLab orchestration flows.
+Summary: Session lifecycle service coordinating RewardLab orchestration flows.
 Created: 2026-04-02
 Last Updated: 2026-04-02
 """
@@ -11,9 +11,15 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
-from rewardlab.experiments.artifacts import RunArtifactWriter
-from rewardlab.experiments.execution_service import ExecutionRequest, ExperimentExecutionService
+from rewardlab.experiments.artifacts import RunArtifactWriter, select_primary_artifact_ref
+from rewardlab.experiments.execution_service import (
+    ExecutionRequest,
+    ExperimentExecutionService,
+    ExperimentRunner,
+)
 from rewardlab.experiments.gymnasium_runner import GymnasiumExperimentRunner
+from rewardlab.experiments.isaacgym_runner import IsaacGymExperimentRunner
+from rewardlab.experiments.robustness_runner import RobustnessRunner
 from rewardlab.feedback.demo_artifacts import DemoArtifactTracker
 from rewardlab.feedback.gating import FeedbackGateEvaluator
 from rewardlab.feedback.human_feedback_service import HumanFeedbackService
@@ -29,6 +35,7 @@ from rewardlab.schemas.experiment_run import ExecutionMode, ExperimentRun, RunSt
 from rewardlab.schemas.feedback_entry import FeedbackEntry
 from rewardlab.schemas.reflection_record import ReflectionRecord
 from rewardlab.schemas.reward_candidate import RewardCandidate
+from rewardlab.schemas.robustness_assessment import RobustnessAssessment
 from rewardlab.schemas.session_config import (
     EnvironmentBackend,
     FeedbackGate,
@@ -153,6 +160,8 @@ class SessionService:
         report_writer: SessionReportWriter | None = None,
         experiment_execution_service: ExperimentExecutionService | None = None,
         gymnasium_runner: GymnasiumExperimentRunner | None = None,
+        isaacgym_runner: IsaacGymExperimentRunner | None = None,
+        robustness_runner: RobustnessRunner | None = None,
         human_feedback_service: HumanFeedbackService | None = None,
         peer_feedback_client: PeerFeedbackClient | None = None,
         feedback_gate_evaluator: FeedbackGateEvaluator | None = None,
@@ -160,6 +169,7 @@ class SessionService:
     ) -> None:
         """Construct a session service using worktree-local dependencies."""
 
+        runtime_environment = load_runtime_environment()
         self.paths = paths
         self.repository = repository or SessionRepository(
             RepositoryPaths(
@@ -176,6 +186,13 @@ class SessionService:
             or ExperimentExecutionService(artifact_writer=paths.experiment_artifact_writer())
         )
         self.gymnasium_runner = gymnasium_runner or GymnasiumExperimentRunner()
+        self.isaacgym_runner = isaacgym_runner or IsaacGymExperimentRunner()
+        self.robustness_runner = robustness_runner or _build_optional_robustness_runner(
+            runtime_environment=runtime_environment,
+            experiment_execution_service=self.experiment_execution_service,
+            gymnasium_runner=self.gymnasium_runner,
+            isaacgym_runner=self.isaacgym_runner,
+        )
         self.human_feedback_service = human_feedback_service or HumanFeedbackService(
             DemoArtifactTracker(paths.report_dir / "feedback_artifacts")
         )
@@ -290,7 +307,12 @@ class SessionService:
         candidates = self.list_candidates(session_id)
         current_candidate = max(candidates, key=lambda candidate: candidate.iteration_index)
         objective_text = str(session.metadata["objective_text"])
-        previous_best = self.selection_policy.select_best_candidate(candidates)
+        previous_best = self.selection_policy.select_best_candidate(
+            candidates,
+            assessments=_latest_assessment_map(
+                self.list_robustness_assessments(session_id=session_id)
+            ),
+        )
         artifacts = self.iteration_engine.run_iteration(
             session_id=session_id,
             objective_text=objective_text,
@@ -317,7 +339,12 @@ class SessionService:
 
         candidates = self.list_candidates(session_id)
         reflections = self.list_reflections(session_id)
-        best_candidate = self.selection_policy.select_best_candidate(candidates)
+        best_candidate = self.selection_policy.select_best_candidate(
+            candidates,
+            assessments=_latest_assessment_map(
+                self.list_robustness_assessments(session_id=session_id)
+            ),
+        )
         no_improve_streak = int(session.metadata.get("no_improve_streak", 0))
         if best_candidate.candidate_id != previous_best.candidate_id:
             no_improve_streak = 0
@@ -372,6 +399,7 @@ class SessionService:
         candidates = self.list_candidates(session_id)
         reflections = self.list_reflections(session_id)
         experiment_runs = self.list_experiment_runs(session_id=session_id)
+        robustness_assessments = self.list_robustness_assessments(session_id=session_id)
         feedback_entries = self.list_feedback(session_id)
         gate_result = self.feedback_gate_evaluator.evaluate(
             feedback_gate=session.feedback_gate,
@@ -384,6 +412,7 @@ class SessionService:
             feedback_entries=feedback_entries,
             gate_result=gate_result,
             experiment_runs=experiment_runs,
+            robustness_assessments=robustness_assessments,
         )
         self.repository.save_session(session)
         self.repository.append_event(
@@ -435,6 +464,7 @@ class SessionService:
         candidates = self.list_candidates(session_id)
         reflections = self.list_reflections(session_id)
         experiment_runs = self.list_experiment_runs(session_id=session_id)
+        robustness_assessments = self.list_robustness_assessments(session_id=session_id)
         feedback_entries = self.list_feedback(session_id)
         gate_result = self.feedback_gate_evaluator.evaluate(
             feedback_gate=session.feedback_gate,
@@ -447,6 +477,7 @@ class SessionService:
             feedback_entries=feedback_entries,
             gate_result=gate_result,
             experiment_runs=experiment_runs,
+            robustness_assessments=robustness_assessments,
         )
         return StoppedSession(
             session_id=session_id,
@@ -497,6 +528,24 @@ class SessionService:
             if run.candidate_id in candidate_ids or run.run_id.startswith(session_prefix)
         ]
 
+    def list_robustness_assessments(
+        self,
+        *,
+        session_id: str | None = None,
+        candidate_id: str | None = None,
+    ) -> list[RobustnessAssessment]:
+        """Return stored robustness assessments for the requested session or candidate."""
+
+        assessments = self.repository.list_robustness_assessments(candidate_id=candidate_id)
+        if session_id is None:
+            return assessments
+        candidate_ids = {candidate.candidate_id for candidate in self.list_candidates(session_id)}
+        return [
+            assessment
+            for assessment in assessments
+            if assessment.candidate_id in candidate_ids
+        ]
+
     def submit_human_feedback(
         self,
         *,
@@ -509,12 +558,16 @@ class SessionService:
         """Create, persist, and emit a human feedback entry."""
 
         self._get_required_candidate(session_id, candidate_id)
+        resolved_artifact_ref = artifact_ref or self._default_feedback_artifact_ref(
+            session_id=session_id,
+            candidate_id=candidate_id,
+        )
         feedback = self.human_feedback_service.submit_feedback(
             session_id=session_id,
             candidate_id=candidate_id,
             comment=comment,
             score=score,
-            artifact_ref=artifact_ref,
+            artifact_ref=resolved_artifact_ref,
         )
         self._save_feedback(session_id, feedback)
         self.repository.append_event(
@@ -534,12 +587,17 @@ class SessionService:
 
         session = self._get_required_session(session_id)
         candidate = self._get_required_candidate(session_id, candidate_id)
+        resolved_artifact_ref = self._default_feedback_artifact_ref(
+            session_id=session_id,
+            candidate_id=candidate_id,
+        )
         feedback = self.peer_feedback_client.request_feedback(
             session_id=session_id,
             candidate_id=candidate_id,
             objective_text=str(session.metadata["objective_text"]),
             reward_definition=candidate.reward_definition,
             aggregate_score=candidate.aggregate_score,
+            artifact_ref=resolved_artifact_ref,
         )
         self._save_feedback(session_id, feedback)
         self.repository.append_event(
@@ -568,7 +626,12 @@ class SessionService:
 
         candidates = self.list_candidates(session.session_id)
         current_candidate = max(candidates, key=lambda candidate: candidate.iteration_index)
-        previous_best = self.selection_policy.select_best_candidate(candidates)
+        previous_best = self.selection_policy.select_best_candidate(
+            candidates,
+            assessments=_latest_assessment_map(
+                self.list_robustness_assessments(session_id=session.session_id)
+            ),
+        )
         objective_text = str(session.metadata["objective_text"])
         planned_iteration = self.iteration_engine.plan_iteration(
             session_id=session.session_id,
@@ -622,6 +685,11 @@ class SessionService:
         )
         self._save_candidate(executed_candidate)
         self._save_reflection(session.session_id, reflection)
+        robustness_runs, assessment = self._run_robustness_if_enabled(
+            session=session,
+            candidate=executed_candidate,
+            primary_run=execution_result.run,
+        )
         self.repository.append_event(
             session_id=session.session_id,
             event_type="reflection.created",
@@ -641,7 +709,12 @@ class SessionService:
 
         candidates = self.list_candidates(session.session_id)
         reflections = self.list_reflections(session.session_id)
-        best_candidate = self.selection_policy.select_best_candidate(candidates)
+        best_candidate = self.selection_policy.select_best_candidate(
+            candidates,
+            assessments=_latest_assessment_map(
+                self.list_robustness_assessments(session_id=session.session_id)
+            ),
+        )
         no_improve_streak = int(session.metadata.get("no_improve_streak", 0))
         if best_candidate.candidate_id != previous_best.candidate_id:
             no_improve_streak = 0
@@ -656,6 +729,12 @@ class SessionService:
                     "current_iteration": executed_candidate.iteration_index,
                     "no_improve_streak": no_improve_streak,
                     "last_run_id": execution_result.run.run_id,
+                    "last_robustness_run_count": len(robustness_runs),
+                    **(
+                        {"last_robustness_assessment_id": assessment.assessment_id}
+                        if assessment is not None
+                        else {}
+                    ),
                 },
             }
         )
@@ -725,14 +804,71 @@ class SessionService:
         )
         raise RuntimeError(failure_run.failure_reason or "experiment execution failed")
 
-    def _runner_for_backend(self, environment_backend: EnvironmentBackend):
+    def _run_robustness_if_enabled(
+        self,
+        *,
+        session: SessionRecord,
+        candidate: RewardCandidate,
+        primary_run: ExperimentRun,
+    ) -> tuple[list[ExperimentRun], RobustnessAssessment | None]:
+        """Execute and persist robustness probes when the service is configured for them."""
+
+        if self.robustness_runner is None:
+            return [], None
+
+        robustness_runs, assessment = self.robustness_runner.run_candidate_probes(
+            candidate=candidate,
+            primary_run=primary_run,
+            environment_backend=session.environment_backend,
+            environment_id=session.environment_id,
+        )
+        for run in robustness_runs:
+            self.repository.save_experiment_run(run)
+            self.repository.append_event(
+                session_id=session.session_id,
+                event_type=(
+                    "experiment_run.completed"
+                    if run.status == RunStatus.COMPLETED
+                    else "experiment_run.failed"
+                ),
+                payload={
+                    "run_id": run.run_id,
+                    "candidate_id": run.candidate_id,
+                    "run_type": run.run_type.value,
+                    "variant_label": run.variant_label,
+                    "status": run.status.value,
+                    "artifact_refs": run.artifact_refs,
+                    "failure_reason": run.failure_reason,
+                },
+            )
+        if assessment is None:
+            return robustness_runs, None
+
+        self.repository.save_robustness_assessment(assessment)
+        self.repository.append_event(
+            session_id=session.session_id,
+            event_type="robustness.assessed",
+            payload={
+                "assessment_id": assessment.assessment_id,
+                "candidate_id": assessment.candidate_id,
+                "primary_run_id": assessment.primary_run_id,
+                "probe_run_ids": assessment.probe_run_ids,
+                "risk_level": assessment.risk_level.value,
+            },
+        )
+        return robustness_runs, assessment
+
+    def _runner_for_backend(
+        self,
+        environment_backend: EnvironmentBackend,
+    ) -> ExperimentRunner:
         """Return the real-backend runner configured for the requested backend."""
 
         if environment_backend == EnvironmentBackend.GYMNASIUM:
             return self.gymnasium_runner
-        raise RuntimeError(
-            f"actual backend execution is not implemented yet for {environment_backend.value!r}"
-        )
+        if environment_backend == EnvironmentBackend.ISAACGYM:
+            return self.isaacgym_runner
+        raise RuntimeError(f"unsupported environment backend: {environment_backend.value!r}")
 
     def _get_required_session(self, session_id: str) -> SessionRecord:
         """Load a session record and raise when it does not exist."""
@@ -845,6 +981,26 @@ class SessionService:
             updated_at=feedback.created_at.isoformat(),
         )
 
+    def _default_feedback_artifact_ref(
+        self,
+        *,
+        session_id: str,
+        candidate_id: str,
+    ) -> str | None:
+        """Return the preferred persisted artifact reference for candidate review flows."""
+
+        completed_runs = [
+            run
+            for run in self.list_experiment_runs(
+                session_id=session_id,
+                candidate_id=candidate_id,
+            )
+            if run.status == RunStatus.COMPLETED and run.artifact_refs
+        ]
+        if not completed_runs:
+            return None
+        return select_primary_artifact_ref(completed_runs[-1].artifact_refs)
+
     def _write_checkpoint(
         self,
         session: SessionRecord,
@@ -904,6 +1060,42 @@ def _feedback_namespace(session_id: str) -> str:
     return f"{SESSION_FEEDBACK_NAMESPACE}:{session_id}"
 
 
+def _build_optional_robustness_runner(
+    *,
+    runtime_environment: dict[str, str],
+    experiment_execution_service: ExperimentExecutionService,
+    gymnasium_runner: GymnasiumExperimentRunner,
+    isaacgym_runner: IsaacGymExperimentRunner,
+) -> RobustnessRunner | None:
+    """Return an env-enabled robustness runner, or `None` when disabled."""
+
+    if not _env_truthy(runtime_environment.get("REWARDLAB_ENABLE_ROBUSTNESS")):
+        return None
+    probe_matrix_path = Path(
+        runtime_environment.get(
+            "REWARDLAB_PROBE_MATRIX_PATH",
+            "tools/reward_hack_probes/probe_matrix.yaml",
+        )
+    )
+    return RobustnessRunner(
+        probe_matrix_path=probe_matrix_path,
+        experiment_execution_service=experiment_execution_service,
+        gymnasium_runner=gymnasium_runner,
+        isaacgym_runner=isaacgym_runner,
+    )
+
+
+def _latest_assessment_map(
+    assessments: list[RobustnessAssessment],
+) -> dict[str, RobustnessAssessment]:
+    """Return the latest stored robustness assessment for each candidate."""
+
+    latest: dict[str, RobustnessAssessment] = {}
+    for assessment in assessments:
+        latest[assessment.candidate_id] = assessment
+    return latest
+
+
 def _default_session_id() -> str:
     """Return a UTC timestamp-based session identifier."""
 
@@ -949,3 +1141,11 @@ def _optional_int(value: object) -> int | None:
         except ValueError:
             return None
     return None
+
+
+def _env_truthy(value: str | None) -> bool:
+    """Return whether an environment toggle string should be treated as enabled."""
+
+    if value is None:
+        return False
+    return value.strip().casefold() in {"1", "true", "yes", "on"}

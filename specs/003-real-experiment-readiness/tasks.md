@@ -91,14 +91,14 @@ evidence.
 
 ### Tests for User Story 2
 
-- [ ] T019 [P] [US2] Add integration coverage for lifecycle-triggered robustness execution and persisted assessments in `tests/integration/test_real_robustness_pipeline.py`
-- [ ] T020 [P] [US2] Add integration coverage for actual rollout artifact bundles and feedback attachment in `tests/integration/test_real_demo_artifacts.py`
+- [x] T019 [P] [US2] Add integration coverage for lifecycle-triggered robustness execution and persisted assessments in `tests/integration/test_real_robustness_pipeline.py`
+- [x] T020 [P] [US2] Add integration coverage for actual rollout artifact bundles and feedback attachment in `tests/integration/test_real_demo_artifacts.py`
 
 ### Implementation for User Story 2
 
-- [ ] T021 [US2] Integrate `RobustnessRunner` into the real session lifecycle in `src/rewardlab/orchestrator/session_service.py` and `src/rewardlab/experiments/robustness_runner.py`
-- [ ] T022 [US2] Implement actual artifact capture and manifest emission in `src/rewardlab/experiments/artifacts.py` and `src/rewardlab/feedback/demo_artifacts.py`
-- [ ] T023 [US2] Update robustness-aware selection and reporting to consume stored assessment evidence in `src/rewardlab/selection/policy.py`, `src/rewardlab/selection/risk_analyzer.py`, and `src/rewardlab/orchestrator/reporting.py`
+- [x] T021 [US2] Integrate `RobustnessRunner` into the real session lifecycle in `src/rewardlab/orchestrator/session_service.py` and `src/rewardlab/experiments/robustness_runner.py`
+- [x] T022 [US2] Implement actual artifact capture and manifest emission in `src/rewardlab/experiments/artifacts.py` and `src/rewardlab/feedback/demo_artifacts.py`
+- [x] T023 [US2] Update robustness-aware selection and reporting to consume stored assessment evidence in `src/rewardlab/selection/policy.py`, `src/rewardlab/selection/risk_analyzer.py`, and `src/rewardlab/orchestrator/reporting.py`
 
 **Checkpoint**: Final recommendation flow uses real robustness evidence and actual run artifacts.
 
@@ -115,15 +115,15 @@ runtime prerequisite error is surfaced.
 
 ### Tests for User Story 3
 
-- [ ] T024 [P] [US3] Add contract tests for Isaac runtime detection and prerequisite errors in `tests/contract/test_isaacgym_backend_runtime.py`
-- [ ] T025 [P] [US3] Add integration coverage for actual Isaac experiment persistence in `tests/integration/test_isaac_real_experiment.py`
-- [ ] T026 [P] [US3] Add an end-to-end CLI smoke for actual Isaac execution in `tests/e2e/test_isaac_actual_experiment.py`
+- [x] T024 [P] [US3] Add contract tests for Isaac runtime detection and prerequisite errors in `tests/contract/test_isaacgym_backend_runtime.py`
+- [x] T025 [P] [US3] Add integration coverage for actual Isaac experiment persistence in `tests/integration/test_isaac_real_experiment.py`
+- [x] T026 [P] [US3] Add an end-to-end CLI smoke for actual Isaac execution in `tests/e2e/test_isaac_actual_experiment.py`
 
 ### Implementation for User Story 3
 
-- [ ] T027 [P] [US3] Implement real Isaac environment creation and readiness reporting in `src/rewardlab/experiments/backends/isaacgym_backend.py`
-- [ ] T028 [P] [US3] Implement the Isaac experiment runner and execution-service integration in `src/rewardlab/experiments/isaacgym_runner.py` and `src/rewardlab/experiments/execution_service.py`
-- [ ] T029 [US3] Integrate Isaac runtime configuration, reporting, and operator guidance in `src/rewardlab/orchestrator/session_service.py`, `src/rewardlab/orchestrator/reporting.py`, and `specs/003-real-experiment-readiness/quickstart.md`
+- [x] T027 [P] [US3] Implement real Isaac environment creation and readiness reporting in `src/rewardlab/experiments/backends/isaacgym_backend.py`
+- [x] T028 [P] [US3] Implement the Isaac experiment runner and execution-service integration in `src/rewardlab/experiments/isaacgym_runner.py` and `src/rewardlab/experiments/execution_service.py`
+- [x] T029 [US3] Integrate Isaac runtime configuration, reporting, and operator guidance in `src/rewardlab/orchestrator/session_service.py`, `src/rewardlab/orchestrator/reporting.py`, and `specs/003-real-experiment-readiness/quickstart.md`
 
 **Checkpoint**: Real Isaac experiments run through the shared lifecycle or fail with precise prerequisite guidance.
 
@@ -133,7 +133,7 @@ runtime prerequisite error is surfaced.
 
 **Purpose**: Final validation, reproducibility, cleanup, and handoff refresh.
 
-- [ ] T030 [P] Add backend smoke wrappers and documentation-friendly validation commands in `tools/quality/run_real_backend_smokes.ps1` and `tools/quality/run_full_validation.ps1`
+- [x] T030 [P] Add backend smoke wrappers and documentation-friendly validation commands in `tools/quality/run_real_backend_smokes.ps1` and `tools/quality/run_full_validation.ps1`
 - [x] T031 Run the approved real Gymnasium smoke validation and record the evidence in `specs/003-real-experiment-readiness/verification-report.md`
 - [ ] T032 Run the approved real Isaac smoke validation and record the evidence in `specs/003-real-experiment-readiness/verification-report.md`
 - [ ] T033 Perform dead-code cleanup and remove superseded MVP-only execution branches in `src/rewardlab/`, `tests/`, and `tools/`

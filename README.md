@@ -150,6 +150,12 @@ Run the full local validation suite with one command:
 .\tools\quality\run_full_validation.ps1
 ```
 
+Run the opt-in real backend smokes with:
+
+```powershell
+.\tools\quality\run_real_backend_smokes.ps1
+```
+
 That runner executes:
 
 - contract/schema validation
@@ -157,6 +163,10 @@ That runner executes:
 - `ruff`
 - `mypy`
 - all unit, contract, integration, and end-to-end tests
+
+The real-backend smoke wrapper defaults to the Gymnasium smoke and can also run
+the Isaac smoke once the approved runtime is installed and
+`REWARDLAB_ISAAC_ENV_FACTORY` plus `REWARDLAB_TEST_ISAAC_ENV_ID` are set.
 
 Detailed operator steps and manual workflow examples are in
 `specs/001-iterative-reward-design/quickstart.md` and

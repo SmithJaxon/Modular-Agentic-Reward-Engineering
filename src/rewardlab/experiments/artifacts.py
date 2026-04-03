@@ -15,7 +15,7 @@ from typing import Any
 from rewardlab.schemas.experiment_run import ExecutionMode, RunStatus
 from rewardlab.schemas.session_config import EnvironmentBackend
 
-__all__ = ["RunArtifactBundle", "RunArtifactWriter"]
+__all__ = ["RunArtifactBundle", "RunArtifactWriter", "select_primary_artifact_ref"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,3 +92,13 @@ class RunArtifactWriter:
             metrics_path=metrics_path,
             event_trace_path=event_trace_path,
         )
+
+
+def select_primary_artifact_ref(artifact_refs: list[str]) -> str | None:
+    """Return the preferred artifact reference for reviews and report links."""
+
+    for suffix in ("manifest.json", "metrics.json"):
+        for artifact_ref in artifact_refs:
+            if artifact_ref.endswith(suffix):
+                return artifact_ref
+    return artifact_refs[0] if artifact_refs else None

@@ -65,4 +65,31 @@ Result:
 ### Remaining Blockers
 
 - Isaac runtime install and smoke validation are still pending.
-- Real robustness and feedback-artifact integration are still pending.
+
+### Offline And Wrapper Validation
+
+The following local validation commands were executed after the US2, US3, and
+quality-wrapper changes landed in the worktree:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\quality\run_full_validation.ps1
+powershell -ExecutionPolicy Bypass -File tools\quality\run_real_backend_smokes.ps1
+```
+
+Observed evidence:
+
+- `run_full_validation.ps1`: PASS
+- Offline suite result: `63 passed, 2 skipped`
+- `run_real_backend_smokes.ps1`: PASS
+- Real Gymnasium wrapper smoke result: `1 passed`
+
+Current status:
+
+- PASS: Real robustness assessments and feedback artifact attachment now have
+  focused integration coverage and pass in the worktree.
+- PASS: Isaac actual-backend runtime handling, session persistence, and CLI
+  smoke scaffolding now have offline-safe coverage and pass in the worktree.
+- PASS: Quality scripts now keep pytest temp files inside the worktree and can
+  optionally invoke real backend smokes.
+- BLOCKED: Real Isaac smoke evidence still requires approval-gated runtime
+  installation plus local `REWARDLAB_ISAAC_ENV_FACTORY` configuration.

@@ -1,94 +1,211 @@
 # Next Agent Handoff
 
-## Objective
-
-Continue from the dedicated worktree until RewardLab can run an actual
-experiment in both `gymnasium` and `isaacgym`, not just the offline-safe MVP
-loop.
-
-## Where To Work
+## Workspace
 
 - Active worktree: `C:\Users\smith\LocalOnlyClasses\AdvAi\Project-agent-autonomous-pass`
 - Active branch: `agent-autonomous-pass`
+- Stay in this worktree only. Do not touch the sibling non-worktree checkout.
 
-Do not work in the sibling root repository for this thread.
+## Guardrails
 
-## Primary Backlog
-
-1. `specs/003-real-experiment-readiness/spec.md`
-2. `specs/003-real-experiment-readiness/plan.md`
-3. `specs/003-real-experiment-readiness/tasks.md`
-
-`specs/001-iterative-reward-design/` is complete for the MVP/offline-safe
-tranche. The remaining product gap is real backend execution, real robustness
-evidence, and real artifacts.
-
-## Current State
-
-- Offline MVP orchestration is complete and previously validated.
-- Live low-cost peer feedback path is working with `.env` autoload.
-- `gymnasium` and `torch` were not installed in `.venv` at the time this
-  handoff was written.
-- The main remaining gap is that `session step` still uses the deterministic
-  iteration engine instead of a real backend execution path.
-
-## Hard Rules
-
-- Keep all edits, tests, temp files, installs, and generated artifacts inside
+- Keep all edits, tests, temp files, artifacts, and virtualenv activity inside
   this worktree.
 - No downloads, installs, upgrades, package fetches, model pulls, or dataset
   fetches without user approval.
-- Any approved install must stay inside `.venv`.
-- No machine-level changes, PATH edits, registry edits, shell profile edits, or
-  writes outside the worktree.
-- Make frequent meaningful commits.
-- Review sub-agent code like a pull request before integration.
-- Parallelize aggressively only when write sets are disjoint.
-- Use the cheapest viable API model and as few calls as possible if API-backed
-  validation is needed.
+- Any approved install must stay inside `.venv\`.
+- Any git `add` or `commit` still needs user approval because worktree git
+  metadata lives under the sibling repo's `.git\worktrees\...` path.
+- No destructive cleanup outside normal worktree-local temp files unless the
+  user approves it.
 
-## Approval Gates
+## Stable Committed State
 
-Stop and ask the user before:
+Latest clean commits on this branch:
 
-- any new dependency install or download
-- any runtime setup that writes outside the worktree
-- any destructive command
-- any paid API action if the current path truly requires it
+1. `f89047e` `Add real execution foundations`
+2. `1118030` `Add actual Gymnasium execution path`
+3. `eb69db4` `Record real Gymnasium smoke validation`
 
-If blocked on an approval-gated install, continue unblocked code and test work
-first wherever dependency order allows it.
+Committed and already stable before this handoff:
 
-## Execution Loop
+- Shared real-execution foundations (`T001`, `T003`, `T004`, `T005` to `T010`)
+- Actual Gymnasium backend path (`T011` to `T018`)
+- Approved worktree-local `gymnasium` install recorded in docs
+- Real Gymnasium smoke evidence recorded in
+  `specs/003-real-experiment-readiness/verification-report.md`
+- `T031` marked complete
 
-For each chunk:
+## Current Uncommitted State
 
-1. confirm task scope from `specs/003-real-experiment-readiness/tasks.md`
-2. add or update tests first
-3. implement the smallest coherent slice
-4. run the smallest relevant validation set
-5. fix failures immediately
-6. commit when the slice is stable
+The worktree now contains a validated but uncommitted US2, US3, and T030 slice.
+No commit exists yet because that still requires user approval.
 
-## Suggested First Moves
+Completed in the current uncommitted diff:
 
-1. Read `AGENTS.md`, `specs/002-autonomous-project-pass/`, and the full `003`
-   planning set.
-2. Start with `T001`, `T003`, `T004`, and the Phase 2 design work that does not
-   require new packages.
-3. Ask for approval only when the next critical step truly needs real backend
-   dependencies inside `.venv`.
-4. Finish Gymnasium real execution before attempting Isaac integration.
+- `T019` to `T023`: real robustness execution, stored assessments, actual
+  feedback artifact refs, and robustness-aware reporting/selection
+- `T024` to `T029`: Isaac runtime readiness handling, actual-backend session
+  support, offline-safe Isaac tests, and operator guidance for factory-based
+  Isaac execution
+- `T030`: new backend smoke wrapper plus updated full-validation script
 
-## Completion Standard
+Key code and docs touched:
 
-Do not treat the project as complete until you can point to:
+- `src/rewardlab/experiments/artifacts.py`
+- `src/rewardlab/experiments/backends/isaacgym_backend.py`
+- `src/rewardlab/experiments/isaacgym_runner.py`
+- `src/rewardlab/experiments/robustness_runner.py`
+- `src/rewardlab/feedback/human_feedback_service.py`
+- `src/rewardlab/feedback/peer_feedback_client.py`
+- `src/rewardlab/orchestrator/reporting.py`
+- `src/rewardlab/orchestrator/session_service.py`
+- `src/rewardlab/schemas/robustness_assessment.py`
+- `src/rewardlab/selection/risk_analyzer.py`
+- `tests/contract/test_isaacgym_backend_runtime.py`
+- `tests/e2e/test_isaac_actual_experiment.py`
+- `tests/integration/test_isaac_real_experiment.py`
+- `tests/integration/test_real_demo_artifacts.py`
+- `tests/integration/test_real_robustness_pipeline.py`
+- `tests/integration/test_reward_hack_probes.py`
+- `tests/unit/test_real_execution_foundations.py`
+- `tools/quality/run_full_validation.ps1`
+- `tools/quality/run_real_backend_smokes.ps1`
+- `README.md`
+- `specs/003-real-experiment-readiness/quickstart.md`
+- `specs/003-real-experiment-readiness/tasks.md`
+- `specs/003-real-experiment-readiness/verification-report.md`
 
-- one real Gymnasium session report with non-empty run metrics and artifact refs
-- one real Isaac session report with non-empty run metrics and artifact refs
-- the offline suite still passing
-- exact approved install/setup commands recorded in docs
+## Validation Completed In This Worktree
 
-If you cannot finish due to an approval-gated dependency or runtime prerequisite,
-leave the branch in a clean committed state and document the exact blocker,
-current evidence, and next command needed.
+Focused US2 lint:
+
+```powershell
+.\.venv\Scripts\python.exe -m ruff check `
+  src/rewardlab/experiments/artifacts.py `
+  src/rewardlab/experiments/robustness_runner.py `
+  src/rewardlab/feedback/human_feedback_service.py `
+  src/rewardlab/feedback/peer_feedback_client.py `
+  src/rewardlab/orchestrator/reporting.py `
+  src/rewardlab/orchestrator/session_service.py `
+  src/rewardlab/schemas/robustness_assessment.py `
+  src/rewardlab/selection/risk_analyzer.py `
+  tests/unit/test_real_execution_foundations.py `
+  tests/integration/test_reward_hack_probes.py `
+  tests/integration/test_real_robustness_pipeline.py `
+  tests/integration/test_real_demo_artifacts.py
+```
+
+Result:
+
+- PASS
+
+Focused US2 pytest:
+
+```powershell
+Remove-Item -Recurse -Force .tmp\pytest-us2 -ErrorAction SilentlyContinue
+$env:TMP=(Resolve-Path .tmp).Path
+$env:TEMP=$env:TMP
+$env:TMPDIR=$env:TMP
+.\.venv\Scripts\python.exe -m pytest `
+  tests/unit/test_real_execution_foundations.py `
+  tests/integration/test_reward_hack_probes.py `
+  tests/integration/test_real_robustness_pipeline.py `
+  tests/integration/test_real_demo_artifacts.py `
+  -q --basetemp .tmp\pytest-us2 -p no:cacheprovider
+```
+
+Result:
+
+- `11 passed`
+
+Focused US3 pytest:
+
+```powershell
+Remove-Item -Recurse -Force .tmp\pytest-us3 -ErrorAction SilentlyContinue
+$env:TMP=(Resolve-Path .tmp).Path
+$env:TEMP=$env:TMP
+$env:TMPDIR=$env:TMP
+.\.venv\Scripts\python.exe -m pytest `
+  tests/contract/test_backend_adapters.py `
+  tests/contract/test_isaacgym_backend_runtime.py `
+  tests/integration/test_isaac_real_experiment.py `
+  tests/e2e/test_isaac_actual_experiment.py `
+  -q --basetemp .tmp\pytest-us3 -p no:cacheprovider
+```
+
+Result:
+
+- `8 passed, 1 skipped`
+
+Shared real-path regression:
+
+```powershell
+Remove-Item -Recurse -Force .tmp\pytest-regression-real -ErrorAction SilentlyContinue
+$env:TMP=(Resolve-Path .tmp).Path
+$env:TEMP=$env:TMP
+$env:TMPDIR=$env:TMP
+.\.venv\Scripts\python.exe -m pytest `
+  tests/unit/test_real_execution_foundations.py `
+  tests/integration/test_reward_hack_probes.py `
+  tests/integration/test_real_robustness_pipeline.py `
+  tests/integration/test_real_demo_artifacts.py `
+  tests/contract/test_gymnasium_backend_runtime.py `
+  tests/integration/test_gymnasium_real_experiment.py `
+  tests/e2e/test_gymnasium_actual_experiment.py `
+  -q --basetemp .tmp\pytest-regression-real -p no:cacheprovider
+```
+
+Result:
+
+- `15 passed, 1 skipped`
+
+Wrapper and full validation:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\quality\run_full_validation.ps1
+powershell -ExecutionPolicy Bypass -File tools\quality\run_real_backend_smokes.ps1
+```
+
+Results:
+
+- `run_full_validation.ps1`: `63 passed, 2 skipped`
+- `run_real_backend_smokes.ps1`: Gymnasium smoke `1 passed`
+
+## Current Objective
+
+The remaining backlog is now:
+
+- `T032`: run the approval-gated real Isaac smoke and record evidence
+- `T033`: dead-code cleanup and removal of superseded MVP-only branches
+- `T034`: final handoff and checklist refresh
+
+## Remaining Approval-Gated Work
+
+- `torch` and Isaac runtime packages are still not installed inside `.venv\`
+- Real Isaac smoke evidence still needs user approval for runtime install
+- The new Isaac CLI/test path expects:
+  - `REWARDLAB_ISAAC_ENV_FACTORY`
+  - optional `REWARDLAB_ISAAC_ENV_VALIDATOR`
+  - `REWARDLAB_TEST_ISAAC_ENV_ID`
+- Any git commit still needs user approval
+
+## Recommended Next Steps
+
+1. If the user does not approve installs yet, tackle `T033` by pruning any
+   clearly superseded MVP-only execution branches that are no longer used.
+2. If the user approves the next runtime step, install the approved Isaac
+   runtime inside `.venv\`, set `REWARDLAB_ISAAC_ENV_FACTORY` plus
+   `REWARDLAB_TEST_ISAAC_ENV_ID`, and run:
+
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File tools\quality\run_real_backend_smokes.ps1 `
+     -IsaacGym `
+     -IsaacFactory "<module.submodule:callable>" `
+     -IsaacEnvId "<APPROVED_ISAAC_ENV>"
+   ```
+
+3. Record the real Isaac smoke evidence in
+   `specs/003-real-experiment-readiness/verification-report.md`.
+4. Refresh `specs/003-real-experiment-readiness/checklists/requirements.md`
+   and this handoff for final completion status.
+5. Ask for approval before creating any checkpoint or final commit.

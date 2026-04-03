@@ -10,6 +10,7 @@ from pathlib import Path
 
 from rewardlab.experiments.backends.gymnasium_backend import GymnasiumBackend
 from rewardlab.experiments.robustness_runner import RobustnessRunner
+from rewardlab.schemas.experiment_run import ExecutionMode, ExperimentRun, RunStatus, RunType
 from rewardlab.schemas.reward_candidate import RewardCandidate
 from rewardlab.schemas.session_config import EnvironmentBackend
 from rewardlab.selection.policy import CandidateSelectionPolicy
@@ -70,9 +71,23 @@ def test_reward_hack_probe_matrix_flags_risk_and_penalizes_selection() -> None:
         change_summary="Slightly weaker but stable candidate.",
         aggregate_score=9.2,
     )
+    primary_run = ExperimentRun(
+        run_id="candidate-risky-performance-001",
+        candidate_id=risky_candidate.candidate_id,
+        backend=EnvironmentBackend.GYMNASIUM,
+        environment_id="cartpole-v1-primary",
+        run_type=RunType.PERFORMANCE,
+        execution_mode=ExecutionMode.OFFLINE_TEST,
+        variant_label="default",
+        status=RunStatus.COMPLETED,
+        metrics={"total_reward": 10.0},
+        started_at=risky_candidate.created_at,
+        ended_at=risky_candidate.created_at,
+    )
 
     runs, assessment = runner.run_candidate_probes(
         candidate=risky_candidate,
+        primary_run=primary_run,
         environment_backend=EnvironmentBackend.GYMNASIUM,
         environment_id="cartpole-v1",
         policy=lambda _: 0,
@@ -83,6 +98,8 @@ def test_reward_hack_probe_matrix_flags_risk_and_penalizes_selection() -> None:
     )
 
     assert len(runs) >= 3
+    assert assessment is not None
     assert assessment.risk_level.value == "high"
+    assert assessment.primary_run_id == primary_run.run_id
     assert assessment.variant_count == len(runs)
     assert selected.candidate_id == safe_candidate.candidate_id

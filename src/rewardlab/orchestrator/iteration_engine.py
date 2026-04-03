@@ -1,5 +1,5 @@
 """
-Summary: Deterministic evaluate-reflect-revise engine for RewardLab MVP sessions.
+Summary: Deterministic evaluate-reflect-revise engine for offline-safe RewardLab sessions.
 Created: 2026-04-02
 Last Updated: 2026-04-02
 """
@@ -36,7 +36,7 @@ class PlannedIteration:
 
 
 class IterationEngine:
-    """Produce offline-safe reward revisions for the MVP session loop."""
+    """Produce offline-safe reward revisions for the deterministic session loop."""
 
     def evaluate_candidate(
         self,

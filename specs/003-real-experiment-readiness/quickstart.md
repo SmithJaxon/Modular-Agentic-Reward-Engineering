@@ -48,6 +48,23 @@ Detected versions after install:
 `torch` and any Isaac-specific runtime remain pending and should be handled as
 separate approval-gated steps once the Isaac path is ready to validate.
 
+After the approved Isaac runtime is installed, configure RewardLab with a
+worktree-local callable that can construct the approved environment:
+
+```powershell
+$env:REWARDLAB_ISAAC_ENV_FACTORY = "your_module.your_isaac_wrapper:create_environment"
+```
+
+Optional preflight validation for `environment_id` can also be provided:
+
+```powershell
+$env:REWARDLAB_ISAAC_ENV_VALIDATOR = "your_module.your_isaac_wrapper:validate_environment"
+```
+
+The callable must stay inside the worktree and return an object with
+`reset()`, `step()`, and `close()` methods compatible with the shared execution
+runner.
+
 ## Backend-Specific Test Selection
 
 Default pytest runs must stay offline-safe and therefore skip the real backend
@@ -95,16 +112,22 @@ Isaac real smoke target after implementation:
 
 ```powershell
 $env:REWARDLAB_EXECUTION_MODE = "actual_backend"
+$env:REWARDLAB_ISAAC_ENV_FACTORY = "your_module.your_isaac_wrapper:create_environment"
+$env:REWARDLAB_TEST_ISAAC_ENV_ID = "<APPROVED_ISAAC_ENV>"
 .\.venv\Scripts\rewardlab.exe session start `
   --objective-file tools/fixtures/objectives/cartpole.txt `
   --baseline-reward-file tools/fixtures/rewards/cartpole_baseline.py `
-  --environment-id <APPROVED_ISAAC_ENV> `
+  --environment-id $env:REWARDLAB_TEST_ISAAC_ENV_ID `
   --environment-backend isaacgym `
   --no-improve-limit 1 `
   --max-iterations 1 `
   --feedback-gate none `
   --json
 ```
+
+If `isaacgym` is importable but the factory is missing, the session should
+pause with an actionable error pointing to `REWARDLAB_ISAAC_ENV_FACTORY`
+instead of silently falling back to an offline path.
 
 Use `tools/fixtures/experiments/gymnasium_cartpole.json` and
 `tools/fixtures/experiments/isaac_default.json` as the checked-in starting

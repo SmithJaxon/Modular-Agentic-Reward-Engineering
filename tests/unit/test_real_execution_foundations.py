@@ -169,7 +169,10 @@ def test_session_repository_round_trips_experiment_runs_and_assessments(
     assessment = RobustnessAssessment(
         assessment_id="candidate-001-robustness",
         candidate_id="candidate-001",
-        variant_count=3,
+        backend=EnvironmentBackend.GYMNASIUM,
+        primary_run_id="run-001",
+        probe_run_ids=["candidate-001-robustness-001", "candidate-001-robustness-002"],
+        variant_count=2,
         degradation_ratio=0.25,
         risk_level=RiskLevel.MEDIUM,
         risk_notes="Worst probe run dropped by 25 percent.",

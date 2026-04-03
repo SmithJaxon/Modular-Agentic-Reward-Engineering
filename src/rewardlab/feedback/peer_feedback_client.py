@@ -33,6 +33,7 @@ class PeerFeedbackClient:
         objective_text: str,
         reward_definition: str,
         aggregate_score: float | None,
+        artifact_ref: str | None = None,
     ) -> FeedbackEntry:
         """Create a peer feedback entry using a local fallback unless credentials exist."""
 
@@ -51,6 +52,7 @@ class PeerFeedbackClient:
             source_type=FeedbackSourceType.PEER,
             score=round(score, 2),
             comment=comment,
+            artifact_ref=artifact_ref,
         )
 
     def _request_model_feedback(self, *, objective_text: str, reward_definition: str) -> str:

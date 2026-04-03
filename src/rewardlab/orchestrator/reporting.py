@@ -15,6 +15,7 @@ from rewardlab.schemas.experiment_run import ExperimentRun
 from rewardlab.schemas.feedback_entry import FeedbackEntry
 from rewardlab.schemas.reflection_record import ReflectionRecord
 from rewardlab.schemas.reward_candidate import RewardCandidate
+from rewardlab.schemas.robustness_assessment import RobustnessAssessment
 from rewardlab.schemas.session_config import SessionRecord, SessionStatus, StopReason
 from rewardlab.schemas.session_report import (
     IterationSummary,
@@ -42,6 +43,7 @@ class SessionReportWriter:
         feedback_entries: list[FeedbackEntry],
         gate_result: FeedbackGateResult,
         experiment_runs: list[ExperimentRun] | None = None,
+        robustness_assessments: list[RobustnessAssessment] | None = None,
     ) -> SessionReport:
         """Construct a validated session report from persisted session artifacts."""
 
@@ -51,6 +53,9 @@ class SessionReportWriter:
         }
         feedback_by_candidate = _group_feedback_by_candidate(feedback_entries)
         run_by_candidate = _latest_runs_by_candidate(experiment_runs or [])
+        assessment_by_candidate = _latest_assessments_by_candidate(
+            robustness_assessments or []
+        )
         iterations = [
             IterationSummary(
                 iteration_index=candidate.iteration_index,
@@ -60,8 +65,11 @@ class SessionReportWriter:
                     reflection_by_candidate=reflection_by_candidate,
                     feedback_by_candidate=feedback_by_candidate,
                     run=run_by_candidate.get(candidate.candidate_id),
+                    assessment=assessment_by_candidate.get(candidate.candidate_id),
                 ),
-                risk_level=RiskLevel.LOW,
+                risk_level=_report_risk_level(
+                    assessment_by_candidate.get(candidate.candidate_id)
+                ),
                 feedback_count=len(feedback_by_candidate.get(candidate.candidate_id, [])),
             )
             for candidate in sorted(candidates, key=lambda item: item.iteration_index)
@@ -74,7 +82,10 @@ class SessionReportWriter:
             best_candidate=SelectionCandidate(
                 candidate_id=best_candidate.candidate_id,
                 aggregate_score=best_candidate.aggregate_score or 0.0,
-                selection_summary=_selection_summary(gate_result),
+                selection_summary=_selection_summary(
+                    gate_result,
+                    assessment=assessment_by_candidate.get(best_candidate.candidate_id),
+                ),
                 minor_robustness_risk_accepted=best_candidate.minor_robustness_risk_accepted,
             ),
             iterations=iterations,
@@ -89,6 +100,7 @@ class SessionReportWriter:
         feedback_entries: list[FeedbackEntry],
         gate_result: FeedbackGateResult,
         experiment_runs: list[ExperimentRun] | None = None,
+        robustness_assessments: list[RobustnessAssessment] | None = None,
     ) -> Path:
         """Write a JSON report artifact and return its path."""
 
@@ -100,6 +112,7 @@ class SessionReportWriter:
             feedback_entries=feedback_entries,
             gate_result=gate_result,
             experiment_runs=experiment_runs,
+            robustness_assessments=robustness_assessments,
         )
         report_path = self.report_dir / f"{session.session_id}.report.json"
         report_path.write_text(
@@ -164,12 +177,27 @@ def _latest_runs_by_candidate(
     return latest
 
 
+def _latest_assessments_by_candidate(
+    assessments: list[RobustnessAssessment],
+) -> dict[str, RobustnessAssessment]:
+    """Return the latest persisted robustness assessment for each candidate."""
+
+    latest: dict[str, RobustnessAssessment] = {}
+    for assessment in sorted(
+        assessments,
+        key=lambda item: (item.created_at, item.assessment_id),
+    ):
+        latest[assessment.candidate_id] = assessment
+    return latest
+
+
 def _performance_summary_for_candidate(
     *,
     candidate: RewardCandidate,
     reflection_by_candidate: dict[str, ReflectionRecord],
     feedback_by_candidate: dict[str, list[FeedbackEntry]],
     run: ExperimentRun | None,
+    assessment: RobustnessAssessment | None,
 ) -> str:
     """Build an iteration summary that includes any stored run evidence."""
 
@@ -183,26 +211,69 @@ def _performance_summary_for_candidate(
         feedback_entries=feedback_by_candidate.get(candidate.candidate_id, []),
     )
     if run is None:
-        return summary
+        return _append_robustness_summary(summary, assessment)
 
     artifact_refs = ", ".join(run.artifact_refs) if run.artifact_refs else "no artifacts recorded"
-    return (
+    return _append_robustness_summary(
+        (
         f"{summary} Run {run.run_id} used {run.execution_mode.value} on "
         f"{run.environment_id}; artifacts: {artifact_refs}."
+        ),
+        assessment,
     )
 
 
-def _selection_summary(gate_result: FeedbackGateResult) -> str:
+def _selection_summary(
+    gate_result: FeedbackGateResult,
+    *,
+    assessment: RobustnessAssessment | None = None,
+) -> str:
     """Return the final selection summary message for the report."""
 
     if not gate_result.satisfied:
-        return "Recommendation pending required feedback gate."
+        summary = "Recommendation pending required feedback gate."
+        return _append_selection_robustness(summary, assessment)
     if gate_result.conflict_detected:
-        return (
+        summary = (
             "Feedback gate satisfied with conflicting feedback; inspect human and peer "
             "notes before merge."
         )
-    return (
-        "Feedback gate satisfied. Highest-ranked candidate by deterministic MVP "
+        return _append_selection_robustness(summary, assessment)
+    summary = (
+        "Feedback gate satisfied. Highest-ranked candidate by deterministic "
         "selection policy."
     )
+    return _append_selection_robustness(summary, assessment)
+
+
+def _report_risk_level(assessment: RobustnessAssessment | None) -> RiskLevel:
+    """Convert a stored robustness assessment into the report risk enum."""
+
+    if assessment is None:
+        return RiskLevel.LOW
+    return RiskLevel(assessment.risk_level.value)
+
+
+def _append_robustness_summary(
+    summary: str,
+    assessment: RobustnessAssessment | None,
+) -> str:
+    """Append stored robustness details when they exist for the candidate."""
+
+    if assessment is None:
+        return summary
+    return (
+        f"{summary} Robustness risk {assessment.risk_level.value}: "
+        f"{assessment.risk_notes}"
+    )
+
+
+def _append_selection_robustness(
+    summary: str,
+    assessment: RobustnessAssessment | None,
+) -> str:
+    """Append a short robustness note to the best-candidate selection summary."""
+
+    if assessment is None:
+        return summary
+    return f"{summary} Robustness risk: {assessment.risk_level.value}."
