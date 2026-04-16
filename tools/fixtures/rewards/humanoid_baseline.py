@@ -1,4 +1,22 @@
-def reward(observation, x_velocity, reward_alive, reward_quadctrl, terminated, truncated):
+"""
+Summary: Baseline reward fixture for Gymnasium Humanoid forward-locomotion runs.
+Created: 2026-04-06
+Last Updated: 2026-04-16
+"""
+
+from __future__ import annotations
+
+
+def reward(
+    observation: object,
+    x_velocity: float,
+    reward_alive: float,
+    reward_quadctrl: float,
+    terminated: bool,
+    truncated: bool,
+) -> float:
+    """Return a simple forward-velocity objective with alive/control shaping."""
+
     if terminated or truncated:
         return float(reward_alive) - float(reward_quadctrl)
 

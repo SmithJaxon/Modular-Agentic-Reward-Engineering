@@ -79,6 +79,33 @@ class ChatCompletionResponse:
     total_tokens: int | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class ResponseRequest:
+    """Represents a small, typed Responses API request."""
+
+    model: str
+    messages: tuple[ChatMessage, ...]
+    reasoning_effort: Literal["minimal", "low", "medium", "high"] | None = None
+    max_output_tokens: int | None = None
+    tools: tuple[dict[str, Any], ...] = ()
+    tool_choice: dict[str, Any] | str | None = None
+    parallel_tool_calls: bool | None = None
+    max_tool_calls: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ResponseApiResponse:
+    """Represents the normalized response returned by the Responses API wrapper."""
+
+    output_text: str
+    output_items: list[dict[str, Any]]
+    raw_response: Any
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    total_tokens: int | None = None
+    response_id: str | None = None
+
+
 class OpenAIClient:
     """Test-friendly wrapper around the OpenAI SDK.
 
@@ -181,6 +208,40 @@ class OpenAIClient:
             total_tokens=total_tokens,
         )
 
+    def response(self, request: ResponseRequest) -> ResponseApiResponse:
+        """Send one Responses API request and normalize the response."""
+
+        client: Any = self._client or self.build_client()
+        payload: dict[str, Any] = {
+            "model": request.model,
+            "input": _responses_input_from_messages(request.messages),
+        }
+        if request.reasoning_effort is not None:
+            payload["reasoning"] = {"effort": request.reasoning_effort}
+        if request.max_output_tokens is not None:
+            payload["max_output_tokens"] = request.max_output_tokens
+        if len(request.tools) > 0:
+            payload["tools"] = list(request.tools)
+        if request.tool_choice is not None:
+            payload["tool_choice"] = request.tool_choice
+        if request.parallel_tool_calls is not None:
+            payload["parallel_tool_calls"] = request.parallel_tool_calls
+        if request.max_tool_calls is not None:
+            payload["max_tool_calls"] = request.max_tool_calls
+
+        response = client.responses.create(**payload)
+        output_items = _extract_response_output_items(response)
+        input_tokens, output_tokens, total_tokens = _extract_response_usage(response)
+        return ResponseApiResponse(
+            output_text=_extract_response_output_text(response),
+            output_items=output_items,
+            raw_response=response,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            total_tokens=total_tokens,
+            response_id=_extract_response_id(response),
+        )
+
 
 def _parse_timeout(raw_value: str | None) -> float | None:
     """Parse an optional floating-point timeout value from the environment."""
@@ -224,3 +285,77 @@ def _extract_usage(response: Any) -> tuple[int | None, int | None, int | None]:
         int(completion_tokens) if isinstance(completion_tokens, int) else None,
         int(total_tokens) if isinstance(total_tokens, int) else None,
     )
+
+
+def _responses_input_from_messages(messages: tuple[ChatMessage, ...]) -> list[dict[str, Any]]:
+    """Convert chat-style messages into Responses API input items."""
+
+    return [
+        {
+            "role": message.role,
+            "content": [{"type": "input_text", "text": message.content}],
+        }
+        for message in messages
+    ]
+
+
+def _extract_response_output_items(response: Any) -> list[dict[str, Any]]:
+    """Extract normalized output items from a Responses API response."""
+
+    raw_items = getattr(response, "output", None)
+    if not isinstance(raw_items, list):
+        return []
+    normalized: list[dict[str, Any]] = []
+    for item in raw_items:
+        dumped = _model_dump_or_dict(item)
+        if isinstance(dumped, dict):
+            normalized.append(dumped)
+    return normalized
+
+
+def _extract_response_output_text(response: Any) -> str:
+    """Extract text output from a Responses API response."""
+
+    output_text = getattr(response, "output_text", None)
+    if isinstance(output_text, str):
+        return output_text
+    return ""
+
+
+def _extract_response_usage(response: Any) -> tuple[int | None, int | None, int | None]:
+    """Extract token usage counters from a Responses API response when present."""
+
+    usage = getattr(response, "usage", None)
+    if usage is None:
+        return None, None, None
+
+    input_tokens = getattr(usage, "input_tokens", None)
+    output_tokens = getattr(usage, "output_tokens", None)
+    total_tokens = getattr(usage, "total_tokens", None)
+    return (
+        int(input_tokens) if isinstance(input_tokens, int) else None,
+        int(output_tokens) if isinstance(output_tokens, int) else None,
+        int(total_tokens) if isinstance(total_tokens, int) else None,
+    )
+
+
+def _extract_response_id(response: Any) -> str | None:
+    """Extract the response identifier when present."""
+
+    response_id = getattr(response, "id", None)
+    if isinstance(response_id, str) and response_id:
+        return response_id
+    return None
+
+
+def _model_dump_or_dict(value: Any) -> dict[str, Any] | None:
+    """Return a dictionary from an SDK model or raw mapping value."""
+
+    if isinstance(value, dict):
+        return dict(value)
+    model_dump = getattr(value, "model_dump", None)
+    if callable(model_dump):
+        dumped = model_dump(mode="python")
+        if isinstance(dumped, dict):
+            return dumped
+    return None

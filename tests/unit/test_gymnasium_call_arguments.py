@@ -24,6 +24,8 @@ def test_select_call_arguments_accepts_var_keyword_without_missing_error() -> No
     """A reward signature with **kwargs should not fail missing-parameter validation."""
 
     def reward(observation: object, **kwargs: object) -> float:
+        """Return a deterministic scalar while accepting arbitrary keyword context."""
+
         del kwargs
         return 1.0
 
@@ -41,6 +43,8 @@ def test_select_call_arguments_rejects_positional_only_signatures() -> None:
     """Positional-only reward signatures are not callable via keyword adaptation."""
 
     def reward(observation: object, /) -> float:
+        """Return a constant scalar from a positional-only signature."""
+
         return 1.0
 
     with pytest.raises(ExecutionError, match="positional-only"):

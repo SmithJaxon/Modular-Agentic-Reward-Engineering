@@ -1,7 +1,7 @@
 """
 Summary: Service layer for autonomous tool-calling experiments and decision traces.
 Created: 2026-04-10
-Last Updated: 2026-04-10
+Last Updated: 2026-04-16
 """
 
 from __future__ import annotations
@@ -19,6 +19,7 @@ from rewardlab.agentic.benchmarking import (
 )
 from rewardlab.agentic.contracts import ControllerAction, ToolResult
 from rewardlab.agentic.controller import ControllerAgent, ControllerContext
+from rewardlab.agentic.mcp_invoker import McpToolInvoker
 from rewardlab.agentic.policy_engine import PolicyEngine
 from rewardlab.agentic.spec_loader import load_experiment_spec
 from rewardlab.agentic.tool_broker import ToolBroker
@@ -28,10 +29,15 @@ from rewardlab.agentic.tools import (
     ProposeRewardTool,
     RequestHumanFeedbackTool,
     RunExperimentTool,
+    SummarizeRunArtifactsTool,
+    ValidateRewardProgramTool,
 )
 from rewardlab.experiments.execution_service import ExperimentExecutionService
 from rewardlab.feedback.human_feedback_service import HumanFeedbackService
-from rewardlab.orchestrator.session_service import ServicePaths
+from rewardlab.orchestrator.session_service import (
+    ServicePaths,
+    resolve_control_mode_from_environment,
+)
 from rewardlab.persistence.session_repository import RepositoryPaths, SessionRepository
 from rewardlab.schemas.agent_experiment import (
     ActionType,
@@ -179,9 +185,12 @@ class AgentExperimentService:
         self.tool_broker = tool_broker or ToolBroker(
             run_experiment_tool=RunExperimentTool(execution_service=self.execution_service),
             propose_reward_tool=ProposeRewardTool(),
+            summarize_run_artifacts_tool=SummarizeRunArtifactsTool(),
+            validate_reward_program_tool=ValidateRewardProgramTool(),
             estimate_cost_and_risk_tool=EstimateCostAndRiskTool(),
             compare_candidates_tool=CompareCandidatesTool(),
             request_human_feedback_tool=RequestHumanFeedbackTool(),
+            mcp_tool_invoker=McpToolInvoker(),
         )
 
     @classmethod
@@ -247,7 +256,8 @@ class AgentExperimentService:
         )
         actual_benchmark_id = benchmark_id or _default_benchmark_id()
 
-        benchmark_data_dir = self.paths.data_dir / "benchmarks" / actual_benchmark_id
+        runtime_dir = Path(spec.outputs.runtime_dir)
+        benchmark_data_dir = runtime_dir / "benchmarks" / actual_benchmark_id
         specs_dir = benchmark_data_dir / "specs"
         specs_dir.mkdir(parents=True, exist_ok=True)
 
@@ -284,7 +294,7 @@ class AgentExperimentService:
             "runs": [item.to_payload() for item in run_summaries],
             "aggregate": aggregate,
         }
-        report_dir = self.paths.report_dir / "agent_benchmarks"
+        report_dir = runtime_dir / "reports" / "agent_benchmarks"
         report_dir.mkdir(parents=True, exist_ok=True)
         report_path = report_dir / f"{actual_benchmark_id}.benchmark.json"
         report_path.write_text(json.dumps(report_payload, indent=2), encoding="utf-8")
@@ -471,23 +481,73 @@ class AgentExperimentService:
         """Return a full trace payload with decisions, candidates, and runs."""
 
         record = self._require_record(experiment_id)
-        return {
+        return self._build_trace_payload(record=record, for_report=False)
+
+    def _build_trace_payload(
+        self,
+        *,
+        record: AgentExperimentRecord,
+        for_report: bool,
+    ) -> dict[str, object]:
+        """Build either a full or report-shaped trace payload for one experiment."""
+
+        candidates = self.list_candidates(record.experiment_id)
+        runs = self.list_runs(record.experiment_id)
+        decisions = self.list_decisions(record.experiment_id)
+        feedback_requests = self.list_feedback_requests(record.experiment_id)
+        feedback_entries = self.list_feedback(record.experiment_id)
+
+        if for_report and record.spec.outputs.report_detail == "summary":
+            scored_candidates = [
+                candidate for candidate in candidates if candidate.aggregate_score is not None
+            ]
+            best_score = (
+                max(
+                    (
+                        float(candidate.aggregate_score)
+                        for candidate in scored_candidates
+                        if candidate.aggregate_score is not None
+                    ),
+                    default=None,
+                )
+                if len(scored_candidates) > 0
+                else None
+            )
+            summary_payload: dict[str, object] = {
+                "experiment": record.model_dump(mode="json"),
+                "summary": {
+                    "candidate_count": len(candidates),
+                    "run_count": len(runs),
+                    "decision_count": len(decisions),
+                    "feedback_request_count": len(feedback_requests),
+                    "feedback_entry_count": len(feedback_entries),
+                    "best_score": best_score,
+                    "best_candidate_id": record.best_candidate_id,
+                },
+            }
+            if record.spec.outputs.save_decision_trace:
+                summary_payload["recent_decisions"] = [
+                    decision.model_dump(mode="json") for decision in decisions[-5:]
+                ]
+            return summary_payload
+
+        payload: dict[str, object] = {
             "experiment": record.model_dump(mode="json"),
             "candidates": [
-                candidate.model_dump(mode="json")
-                for candidate in self.list_candidates(experiment_id)
+                candidate.model_dump(mode="json") for candidate in candidates
             ],
-            "runs": [run.model_dump(mode="json") for run in self.list_runs(experiment_id)],
-            "decisions": [
-                decision.model_dump(mode="json")
-                for decision in self.list_decisions(experiment_id)
-            ],
-            "feedback_requests": self.list_feedback_requests(experiment_id),
+            "runs": [run.model_dump(mode="json") for run in runs],
+            "feedback_requests": feedback_requests,
             "feedback_entries": [
-                feedback.model_dump(mode="json")
-                for feedback in self.list_feedback(experiment_id)
+                feedback.model_dump(mode="json") for feedback in feedback_entries
             ],
         }
+        include_decisions = not for_report or record.spec.outputs.save_decision_trace
+        if include_decisions:
+            payload["decisions"] = [
+                decision.model_dump(mode="json") for decision in decisions
+            ]
+        return payload
 
     def submit_human_feedback(
         self,
@@ -648,7 +708,12 @@ class AgentExperimentService:
             created_at=now,
             started_at=now,
             best_candidate_id=f"{actual_id}-candidate-000",
-            metadata={"failed_actions": 0, "non_progress_actions": 0},
+            metadata={
+                "failed_actions": 0,
+                "non_progress_actions": 0,
+                "control_mode": resolve_control_mode_from_environment().value,
+                "runtime_dir": spec.outputs.runtime_dir,
+            },
             budget_ledger=AgentBudgetLedger(),
         )
         baseline = RewardCandidate(
@@ -769,6 +834,8 @@ class AgentExperimentService:
             return record, False
 
         if action.action_type in {
+            ActionType.SUMMARIZE_RUN_ARTIFACTS,
+            ActionType.VALIDATE_REWARD_PROGRAM,
             ActionType.ESTIMATE_COST_AND_RISK,
             ActionType.COMPARE_CANDIDATES,
             ActionType.STOP,
@@ -913,9 +980,9 @@ class AgentExperimentService:
     def _write_report(self, *, record: AgentExperimentRecord) -> Path:
         """Write a simple autonomous-experiment report artifact."""
 
-        report_dir = self.paths.report_dir / "agent_experiments"
+        report_dir = Path(record.spec.outputs.runtime_dir) / "reports" / "agent_experiments"
         report_dir.mkdir(parents=True, exist_ok=True)
-        payload = self.trace_payload(experiment_id=record.experiment_id)
+        payload = self._build_trace_payload(record=record, for_report=True)
         report_path = report_dir / f"{record.experiment_id}.report.json"
         report_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
         return report_path

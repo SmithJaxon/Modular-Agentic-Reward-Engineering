@@ -12,12 +12,15 @@ from pathlib import Path
 from rewardlab.agentic.spec_loader import load_experiment_spec
 from rewardlab.agentic.tools.compare_candidates import CompareCandidatesTool
 from rewardlab.agentic.tools.estimate_cost_and_risk import EstimateCostAndRiskTool
+from rewardlab.agentic.tools.summarize_run_artifacts import SummarizeRunArtifactsTool
+from rewardlab.agentic.tools.validate_reward_program import ValidateRewardProgramTool
 from rewardlab.llm.openai_client import ChatCompletionResponse
 from rewardlab.schemas.agent_experiment import (
     AgentBudgetLedger,
     AgentExperimentRecord,
     AgentExperimentStatus,
 )
+from rewardlab.schemas.experiment_run import ExecutionMode, ExperimentRun, RunStatus, RunType
 from rewardlab.schemas.reward_candidate import RewardCandidate
 
 
@@ -123,3 +126,55 @@ def test_estimate_cost_and_risk_uses_analyzer_response() -> None:
     assert result.payload["risk_level"] == "high"
     assert result.payload["recommend_stop"] is True
     assert result.consumed_tokens == 33
+
+
+def test_summarize_run_artifacts_returns_latest_run_summary() -> None:
+    """Summarizer should return compact score/metric evidence for the latest run."""
+
+    record = _record_from_fixture()
+    run = ExperimentRun(
+        run_id="experiment-tool-tests-run-001",
+        candidate_id="experiment-tool-tests-candidate-000",
+        backend=record.spec.environment.backend,
+        environment_id=record.spec.environment.id,
+        run_type=RunType.PERFORMANCE,
+        execution_mode=ExecutionMode.ACTUAL_BACKEND,
+        variant_label="default",
+        status=RunStatus.COMPLETED,
+        ended_at=datetime(2026, 4, 10, 12, 5, tzinfo=UTC),
+        metrics={"episode_reward": 1.25, "step_count": 123},
+        artifact_refs=["manifest.json", "metrics.json"],
+    )
+    result = SummarizeRunArtifactsTool().execute(
+        record=record,
+        candidates=[],
+        runs=[run],
+        action_input={},
+    )
+
+    assert result.status == "ok"
+    assert result.payload["run_id"] == run.run_id
+    assert result.payload["score"] == 1.25
+
+
+def test_validate_reward_program_accepts_valid_candidate_source() -> None:
+    """Validation tool should return executable signature details for valid reward code."""
+
+    record = _record_from_fixture()
+    candidate = RewardCandidate(
+        candidate_id="experiment-tool-tests-candidate-000",
+        session_id=record.experiment_id,
+        iteration_index=0,
+        reward_definition="def compute_reward(observation):\n    return 1.0\n",
+        change_summary="baseline",
+    )
+    result = ValidateRewardProgramTool().execute(
+        record=record,
+        candidates=[candidate],
+        runs=[],
+        action_input={},
+    )
+
+    assert result.status == "ok"
+    assert result.payload["validation_status"] == "valid"
+    assert result.payload["entrypoint_name"] == "compute_reward"

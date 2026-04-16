@@ -19,6 +19,8 @@ from rewardlab.llm.openai_client import (
     ChatMessage,
     OpenAIClient,
     OpenAIClientConfig,
+    ResponseApiResponse,
+    ResponseRequest,
 )
 from rewardlab.orchestrator.session_service import ServicePaths, _default_session_id
 from rewardlab.orchestrator.state_machine import TransitionRequest, apply_transition, can_transition
@@ -293,6 +295,80 @@ def test_openai_client_uses_injected_client_without_network() -> None:
     assert captured_payload["reasoning_effort"] == "minimal"
     assert captured_payload["max_completion_tokens"] == 12
     assert "max_tokens" not in captured_payload
+
+
+def test_openai_client_response_api_supports_injected_client() -> None:
+    """The Responses API wrapper should support injected clients for local tests."""
+
+    captured_payload: dict[str, object] = {}
+
+    class FakeResponses:
+        """Minimal fake responses surface for MCP-capable wrapper tests."""
+
+        def create(self, **kwargs: object) -> object:
+            """Return a response object with the shape expected by the wrapper."""
+
+            captured_payload.update(kwargs)
+            usage = type(
+                "Usage",
+                (),
+                {"input_tokens": 5, "output_tokens": 7, "total_tokens": 12},
+            )()
+            return type(
+                "Response",
+                (),
+                {
+                    "id": "resp-test-001",
+                    "output_text": "ok",
+                    "output": [
+                        {
+                            "type": "mcp_call",
+                            "name": "run_experiment",
+                            "server_label": "local-rewardlab",
+                            "output": '{"status":"ok"}',
+                        }
+                    ],
+                    "usage": usage,
+                },
+            )()
+
+    class FakeClient:
+        """Minimal fake root client exposing the Responses API namespace."""
+
+        def __init__(self) -> None:
+            """Provide the nested responses namespace expected by the wrapper."""
+
+            self.responses = FakeResponses()
+
+    client = OpenAIClient(
+        config=OpenAIClientConfig(api_key=None),
+        client=FakeClient(),
+    )
+    response = client.response(
+        ResponseRequest(
+            model="gpt-5-nano",
+            messages=(ChatMessage(role="user", content="invoke tool"),),
+            reasoning_effort="low",
+            max_output_tokens=120,
+            tools=(
+                {
+                    "type": "mcp",
+                    "server_label": "local-rewardlab",
+                    "server_url": "https://mcp.example.invalid/sse",
+                    "allowed_tools": ["run_experiment"],
+                },
+            ),
+            tool_choice={"type": "mcp", "server_label": "local-rewardlab"},
+            parallel_tool_calls=False,
+            max_tool_calls=1,
+        )
+    )
+
+    assert isinstance(response, ResponseApiResponse)
+    assert response.output_text == "ok"
+    assert response.total_tokens == 12
+    assert captured_payload["max_output_tokens"] == 120
+    assert captured_payload["parallel_tool_calls"] is False
 
 
 def test_peer_feedback_client_uses_gpt5_nano_without_temperature_override() -> None:

@@ -177,7 +177,7 @@ class OpenAIRewardDesigner:
         allowed_parameter_names = request.allowed_parameter_names or _default_allowed_parameters(
             request.current_candidate
         )
-        base_messages = (
+        base_messages: tuple[ChatMessage, ...] = (
             ChatMessage(
                 role="system",
                 content=(
@@ -198,9 +198,10 @@ class OpenAIRewardDesigner:
         last_error: RuntimeError | None = None
         last_content = ""
         for attempt in range(1, max_attempts + 1):
-            messages = base_messages
+            messages: tuple[ChatMessage, ...] = base_messages
             if last_error is not None:
-                messages = messages + (
+                messages = (
+                    *messages,
                     ChatMessage(
                         role="user",
                         content=_build_retry_instruction(
@@ -236,10 +237,7 @@ class OpenAIRewardDesigner:
                     break
 
         assert last_error is not None
-        raise RuntimeError(
-            "reward designer failed to produce a valid response after "
-            f"{max_attempts} attempts: {last_error}"
-        ) from last_error
+        raise RuntimeError(str(last_error)) from last_error
 
 
 def resolve_reward_designer(

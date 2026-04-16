@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from enum import StrEnum
 from pathlib import Path
 from uuid import uuid4
 
@@ -50,6 +51,13 @@ from rewardlab.utils.env import load_runtime_environment
 SESSION_CANDIDATES_NAMESPACE = "session_candidates"
 SESSION_FEEDBACK_NAMESPACE = "session_feedback"
 SESSION_REFLECTIONS_NAMESPACE = "session_reflections"
+
+
+class ControlMode(StrEnum):
+    """Top-level orchestration mode selector for compatibility rollouts."""
+
+    SESSION_PIPELINE = "session_pipeline"
+    AGENT_TOOLS = "agent_tools"
 
 
 @dataclass(frozen=True)
@@ -198,6 +206,7 @@ class SessionService:
         self.peer_feedback_client = peer_feedback_client or PeerFeedbackClient(OpenAIClient())
         self.feedback_gate_evaluator = feedback_gate_evaluator or FeedbackGateEvaluator()
         self.execution_mode = execution_mode
+        self.control_mode = resolve_control_mode_from_environment()
 
     def initialize(self) -> None:
         """Initialize local persistence directories and stores."""
@@ -233,6 +242,7 @@ class SessionService:
                 "current_iteration": 0,
                 "no_improve_streak": 0,
                 "execution_mode": self.execution_mode.value,
+                "control_mode": self.control_mode.value,
                 "reward_designer_mode": self.iteration_engine.reward_designer.mode.value,
                 **_optional_reward_designer_metadata(self.iteration_engine),
             },
@@ -1180,6 +1190,19 @@ def resolve_execution_mode_from_environment() -> ExecutionMode:
     except ValueError as exc:
         raise ValueError(
             f"unsupported REWARDLAB_EXECUTION_MODE value: {raw_value!r}"
+        ) from exc
+
+
+def resolve_control_mode_from_environment() -> ControlMode:
+    """Return the configured top-level control mode from local environment."""
+
+    env = load_runtime_environment()
+    raw_value = env.get("REWARDLAB_CONTROL_MODE", ControlMode.SESSION_PIPELINE.value)
+    try:
+        return ControlMode(raw_value)
+    except ValueError as exc:
+        raise ValueError(
+            f"unsupported REWARDLAB_CONTROL_MODE value: {raw_value!r}"
         ) from exc
 
 

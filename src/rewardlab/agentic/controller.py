@@ -23,6 +23,8 @@ from rewardlab.schemas.reward_candidate import RewardCandidate
 ACTION_TOOL_NAME: dict[ActionType, str] = {
     ActionType.RUN_EXPERIMENT: "run_experiment",
     ActionType.PROPOSE_REWARD: "propose_reward_revision",
+    ActionType.SUMMARIZE_RUN_ARTIFACTS: "summarize_run_artifacts",
+    ActionType.VALIDATE_REWARD_PROGRAM: "validate_reward_program",
     ActionType.ESTIMATE_COST_AND_RISK: "estimate_cost_and_risk",
     ActionType.COMPARE_CANDIDATES: "compare_candidates",
     ActionType.REQUEST_HUMAN_FEEDBACK: "request_human_feedback",

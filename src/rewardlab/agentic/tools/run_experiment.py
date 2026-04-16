@@ -6,7 +6,10 @@ Last Updated: 2026-04-10
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from rewardlab.agentic.contracts import ToolResult
+from rewardlab.experiments.artifacts import RunArtifactWriter
 from rewardlab.experiments.execution_service import ExecutionRequest, ExperimentExecutionService
 from rewardlab.experiments.gymnasium_runner import (
     GymnasiumExperimentRunner,
@@ -65,7 +68,11 @@ class RunExperimentTool:
             entrypoint_name=spec.baseline_reward.entrypoint_name,
             max_episode_steps=rollout.max_episode_steps if rollout is not None else None,
         )
-        result = self.execution_service.execute_candidate(
+        execution_service = _resolve_execution_service(
+            default_service=self.execution_service,
+            runtime_dir=Path(spec.outputs.runtime_dir),
+        )
+        result = execution_service.execute_candidate(
             candidate=selected_candidate,
             request=request,
             runner=runner,
@@ -117,3 +124,17 @@ def _score_from_run(metrics: dict[str, object]) -> float:
     if isinstance(total_reward, (int, float)):
         return float(total_reward)
     return 0.0
+
+
+def _resolve_execution_service(
+    *,
+    default_service: ExperimentExecutionService,
+    runtime_dir: Path,
+) -> ExperimentExecutionService:
+    """Return an execution service scoped to the runtime configured by the spec."""
+
+    requested_root = runtime_dir / "runs"
+    current_root = default_service.artifact_writer.root_dir
+    if current_root == requested_root:
+        return default_service
+    return ExperimentExecutionService(artifact_writer=RunArtifactWriter(requested_root))

@@ -9,6 +9,8 @@ from rewardlab.agentic.tools.estimate_cost_and_risk import EstimateCostAndRiskTo
 from rewardlab.agentic.tools.propose_reward import ProposeRewardTool
 from rewardlab.agentic.tools.request_human_feedback import RequestHumanFeedbackTool
 from rewardlab.agentic.tools.run_experiment import RunExperimentTool
+from rewardlab.agentic.tools.summarize_run_artifacts import SummarizeRunArtifactsTool
+from rewardlab.agentic.tools.validate_reward_program import ValidateRewardProgramTool
 
 __all__ = [
     "CompareCandidatesTool",
@@ -16,4 +18,6 @@ __all__ = [
     "ProposeRewardTool",
     "RequestHumanFeedbackTool",
     "RunExperimentTool",
+    "SummarizeRunArtifactsTool",
+    "ValidateRewardProgramTool",
 ]

@@ -97,3 +97,16 @@ def test_spec_rejects_missing_required_tool_entries() -> None:
 
     with pytest.raises(ValueError, match="missing required entries"):
         AgentExperimentSpec.model_validate(payload)
+
+
+def test_spec_rejects_required_mcp_mode_without_servers() -> None:
+    """Required MCP mode must provide at least one MCP server configuration."""
+
+    payload = load_experiment_spec(
+        Path("tools/fixtures/experiments/agent_cartpole_lowcost.yaml")
+    ).model_dump(mode="python")
+    payload["tool_policy"]["mcp_execution_mode"] = "required"
+    payload["tool_policy"]["mcp_servers"] = []
+
+    with pytest.raises(ValueError, match="mcp_servers must include at least one entry"):
+        AgentExperimentSpec.model_validate(payload)

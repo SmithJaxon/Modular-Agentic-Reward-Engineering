@@ -28,6 +28,8 @@ class NoCredentialClient:
     has_credentials = False
 
     def chat_completion(self, request):  # pragma: no cover - should never be called
+        """Fail fast if a test accidentally invokes network-backed completion."""
+
         del request
         raise AssertionError("chat_completion should not run without credentials")
 

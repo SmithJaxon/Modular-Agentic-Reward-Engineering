@@ -195,3 +195,49 @@
   - `rewardlab experiment benchmark-run --file tools/fixtures/experiments/agent_cartpole_lowcost.yaml --seed 101 --seed 202 --benchmark-id benchmark-smoke-20260411 --json`
   - PASS, report emitted at:
     - `.rewardlab/reports/agent_benchmarks/benchmark-smoke-20260411.benchmark.json`
+
+## 2026-04-16 MCP + Architecture Gap Closure
+
+### Implemented
+
+- Added OpenAI Responses API support and MCP-native tool invocation path:
+  - `src/rewardlab/llm/openai_client.py`
+  - `src/rewardlab/agentic/mcp_invoker.py`
+- Added configurable MCP execution policy (`off|prefer|required`) and server
+  configuration in agent experiment schema:
+  - `src/rewardlab/schemas/agent_experiment.py`
+- Enforced broker timeout/retry semantics and MCP fallback behavior:
+  - `src/rewardlab/agentic/tool_broker.py`
+- Added missing required tools and allowlist/runtime parity:
+  - `src/rewardlab/agentic/tools/summarize_run_artifacts.py`
+  - `src/rewardlab/agentic/tools/validate_reward_program.py`
+  - `src/rewardlab/agentic/tools/__init__.py`
+- Implemented control-mode resolver compatibility wiring:
+  - `src/rewardlab/orchestrator/session_service.py`
+- Implemented output/runtime controls from spec:
+  - `src/rewardlab/agentic/service.py`
+  - `src/rewardlab/agentic/tools/run_experiment.py`
+- Added integration/e2e mixed-action Humanoid coverage:
+  - `tests/integration/test_agentic_humanoid_mixed_actions.py`
+  - `tests/unit/test_agentic_tool_broker.py`
+  - `tests/unit/test_agentic_tools.py`
+  - `tests/unit/test_foundational_components.py`
+  - `tests/unit/test_agent_experiment_spec.py`
+- Applied hygiene updates:
+  - `.gitignore` runtime artifact and `src/rewardlab.egg-info/` policy
+  - `pyproject.toml` explicit `PyYAML` dependency
+  - `origin` remote URL updated to:
+    `https://github.com/SmithJaxon/Modular-Agentic-Reward-Engineering.git`
+
+### Validation
+
+- Focused regression suite:
+  - `.venv\Scripts\python.exe -m pytest tests/unit/test_foundational_components.py tests/unit/test_agent_experiment_spec.py tests/unit/test_agentic_tool_broker.py tests/unit/test_agentic_tools.py tests/unit/test_gymnasium_call_arguments.py tests/unit/test_agentic_controller.py tests/integration/test_agentic_humanoid_mixed_actions.py -q`
+  - Result: `36 passed`
+- Full validation gate:
+  - `powershell -ExecutionPolicy Bypass -File tools/quality/run_full_validation.ps1`
+  - Result:
+    - `check_headers`: PASS
+    - `ruff`: PASS
+    - `mypy`: PASS (`67 source files`)
+    - `pytest` offline suite: `90 passed, 1 skipped`

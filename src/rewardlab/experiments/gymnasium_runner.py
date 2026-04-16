@@ -460,8 +460,9 @@ def _score_transition(
 
 def _build_reward_arguments(
     *,
-    previous_observation: Any,
-    next_observation: Any,
+    previous_observation: Any | None = None,
+    next_observation: Any | None = None,
+    observation: Any | None = None,
     env_reward: float,
     terminated: bool,
     truncated: bool,
@@ -469,13 +470,26 @@ def _build_reward_arguments(
     step_index: int,
     info: dict[str, Any],
 ) -> dict[str, Any]:
-    """Build the named arguments available to a candidate reward function."""
+    """Build the named arguments available to a candidate reward function.
+
+    The optional ``observation`` argument is a backward-compatible alias used by
+    helper tests and older call sites that supplied only one observation value.
+    """
+
+    resolved_next_observation = (
+        next_observation if next_observation is not None else observation
+    )
+    resolved_previous_observation = (
+        previous_observation
+        if previous_observation is not None
+        else resolved_next_observation
+    )
 
     arguments: dict[str, Any] = {
-        "state": next_observation,
-        "observation": next_observation,
-        "next_observation": next_observation,
-        "previous_observation": previous_observation,
+        "state": resolved_next_observation,
+        "observation": resolved_next_observation,
+        "next_observation": resolved_next_observation,
+        "previous_observation": resolved_previous_observation,
         "env_reward": env_reward,
         "environment_reward": env_reward,
         "terminated": terminated,
@@ -484,13 +498,14 @@ def _build_reward_arguments(
         "step_index": step_index,
         "info": info,
     }
-    if _is_numeric_sequence(next_observation, min_length=4):
+    if _is_numeric_sequence(resolved_next_observation, min_length=4):
+        numeric_observation = cast(Sequence[Real], resolved_next_observation)
         arguments.update(
             {
-                "cart_position": float(next_observation[0]),
-                "cart_velocity": float(next_observation[1]),
-                "pole_angle_radians": float(next_observation[2]),
-                "angular_velocity": float(next_observation[3]),
+                "cart_position": float(numeric_observation[0]),
+                "cart_velocity": float(numeric_observation[1]),
+                "pole_angle_radians": float(numeric_observation[2]),
+                "angular_velocity": float(numeric_observation[3]),
             }
         )
     for key, value in info.items():
