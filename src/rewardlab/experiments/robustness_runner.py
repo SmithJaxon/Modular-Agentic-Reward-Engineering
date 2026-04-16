@@ -107,7 +107,7 @@ class RobustnessRunner:
                 objective_text=payload.objective_text,
                 variant_label=variant.variant_label,
                 seed=variant.seed,
-                overrides=variant.overrides,
+                overrides={**payload.overrides, **variant.overrides},
             )
             output = adapter.run_performance(run_payload)
             runs.append(

@@ -27,11 +27,19 @@ headers, function/method headers, and dead-code cleanup.
 - Tooling: `tools/quality/`, `tools/fixtures/`, `tools/reward_hack_probes/`
 - Feature docs: `specs/001-iterative-reward-design/`
 
-## Current Progress Snapshot (2026-04-02)
+## Current Progress Snapshot (2026-04-06)
 
-- Completed and committed: `T001`-`T057`
-- Phase 5 status: completed on `001-iterative-reward-design-impl-p5`
-- Next implementation target: Phase 6 (`T058`-`T067`)
+- Completed implementation tasks: `T001`-`T063`, `T065`-`T067`
+- Pending external validation task: `T064`
+- Deterministic validation, Gymnasium runtime smoke, and live OpenAI smoke are
+  green on `iterative-main`
+- The Gymnasium CLI session workflow was exercised successfully with report,
+  checkpoint, SQLite, and event-log artifacts emitted locally
+- The real Gymnasium PPO engine and adaptive session-level budget planner are
+  implemented and locally validated
+- `.venv-mujoco` now supports local `Humanoid-v4` experiments for Gymnasium
+  follow-up work
+- Isaac Gym runtime execution remains outstanding before `T064` can close
 
 ## Phase 1: Setup (Shared Infrastructure)
 
@@ -184,16 +192,16 @@ headers, function/method headers, and dead-code cleanup.
 
 **Purpose**: Final verification hardening, cleanup, evidence capture, and real backend runtime validation.
 
-- [ ] T058 [P] Update operator documentation and examples in `README.md` and `specs/001-iterative-reward-design/quickstart.md`
-- [ ] T059 Implement one-command validation runner with deterministic and environment-gated real-runtime suites in `tools/quality/run_full_validation.ps1`
-- [ ] T060 [P] Implement end-to-end cycle-time budget test in `tests/e2e/test_iteration_cycle_budget.py`
-- [ ] T061 [P] Implement schema contract regression tests in `tests/unit/test_schema_contracts.py`
-- [ ] T062 [P] Implement header/docstring audit tests in `tests/unit/test_header_audit.py`
-- [ ] T063 Run mandatory dead-code cleanup pass for `src/rewardlab/` and `tests/`
+- [X] T058 [P] Update operator documentation and examples in `README.md` and `specs/001-iterative-reward-design/quickstart.md`
+- [X] T059 Implement one-command validation runner with deterministic and environment-gated real-runtime suites in `tools/quality/run_full_validation.ps1`
+- [X] T060 [P] Implement end-to-end cycle-time budget test in `tests/e2e/test_iteration_cycle_budget.py`
+- [X] T061 [P] Implement schema contract regression tests in `tests/unit/test_schema_contracts.py`
+- [X] T062 [P] Implement header/docstring audit tests in `tests/unit/test_header_audit.py`
+- [X] T063 Run mandatory dead-code cleanup pass for `src/rewardlab/` and `tests/`
 - [ ] T064 Execute full quality gate, including real Gymnasium and Isaac Gym runtime validation on supported machines, and record evidence in `specs/001-iterative-reward-design/verification-report.md`
-- [ ] T065 Update completion notes and compliance status in `specs/001-iterative-reward-design/checklists/requirements.md`
-- [ ] T066 [P] Implement real Gymnasium runtime smoke/integration validation in `tests/integration/test_gymnasium_runtime.py`
-- [ ] T067 [P] Implement real Isaac Gym runtime smoke/integration validation in `tests/integration/test_isaacgym_runtime.py`
+- [X] T065 Update completion notes and compliance status in `specs/001-iterative-reward-design/checklists/requirements.md`
+- [X] T066 [P] Implement real Gymnasium runtime smoke/integration validation in `tests/integration/test_gymnasium_runtime.py`
+- [X] T067 [P] Implement real Isaac Gym runtime smoke/integration validation in `tests/integration/test_isaacgym_runtime.py`
 
 **Critical Completion Gate**: The project is not fully complete until the real-runtime validation tasks (`T066`, `T067`) have passed on supported machines and their evidence is captured by `T064`.
 

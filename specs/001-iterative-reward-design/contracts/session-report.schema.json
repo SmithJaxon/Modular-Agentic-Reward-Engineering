@@ -25,7 +25,7 @@
       "anyOf": [
         {
           "type": "string",
-          "enum": ["user_interrupt", "convergence", "iteration_cap", "api_failure_pause", "error"]
+          "enum": ["user_interrupt", "convergence", "iteration_cap", "budget_cap", "api_failure_pause", "error"]
         },
         {
           "type": "null"

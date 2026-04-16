@@ -11,14 +11,18 @@ reflection, robustness testing, and optional human/peer feedback. The system is
 designed around small testable components and explicit verification loops so each
 phase can be validated independently before full-session runs.
 
-## Current Delivery Status (2026-04-02)
+## Current Delivery Status (2026-04-06)
 
-- Completed implementation phases: 1, 2, 3, 4, and 5 (tasks `T001`-`T057`)
-- Current implementation branch: `001-iterative-reward-design-impl-p5`
-- Next implementation target: Phase 6 (`T058`-`T067`)
-- Detailed handoff for next thread: `/specs/001-iterative-reward-design/phase6-handoff.md`
-- Full completion remains gated on Phase 6 real-runtime validation against actual
-  Gymnasium and Isaac Gym environments on supported machines.
+- Implemented phases: 1, 2, 3, 4, 5, and 6 code artifacts
+- Active integration branch: `iterative-main`
+- Validation evidence: `/specs/001-iterative-reward-design/verification-report.md`
+- Next validation handoff: `/specs/001-iterative-reward-design/phase7-handoff.md`
+- Deterministic validation, Gymnasium runtime smoke, live OpenAI smoke, the
+  Gymnasium CLI session workflow, and the adaptive-budget PPO integration path
+  are green locally as of 2026-04-06.
+- Real `Humanoid-v4` runtime is available through `.venv-mujoco` for local
+  Gymnasium/MuJoCo experiments.
+- Isaac Gym runtime execution remains outstanding.
 
 ## Technical Context
 
@@ -58,6 +62,7 @@ specs/001-iterative-reward-design/
 |-- phase4-handoff.md
 |-- phase5-handoff.md
 |-- phase6-handoff.md
+|-- phase7-handoff.md
 |-- contracts/
 |   |-- orchestrator-cli.md
 |   |-- session-config.schema.json

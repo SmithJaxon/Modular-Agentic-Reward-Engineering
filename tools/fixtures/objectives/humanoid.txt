@@ -1,0 +1,2 @@
+Train a Humanoid-v4 policy that maintains upright, stable locomotion with forward progress.
+Favor smooth, energy-efficient motion and discourage unstable gaits or collapse.

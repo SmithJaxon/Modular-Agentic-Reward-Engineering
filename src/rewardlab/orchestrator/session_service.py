@@ -19,6 +19,13 @@ from rewardlab.feedback.gating import (
 )
 from rewardlab.feedback.human_feedback_service import HumanFeedbackService
 from rewardlab.feedback.peer_feedback_client import PeerFeedbackClient, PeerReviewContext
+from rewardlab.orchestrator.budget_manager import (
+    budget_exhausted_for_next_iteration,
+    initialize_budget_metadata,
+    plan_iteration_budget,
+    record_iteration_budget_usage,
+    remaining_budget_snapshot,
+)
 from rewardlab.orchestrator.checkpointing import build_checkpoint_payload
 from rewardlab.orchestrator.iteration_engine import IterationEngine
 from rewardlab.orchestrator.reporting import build_report_payload, write_report
@@ -84,6 +91,7 @@ class SessionService:
         created = self._repository.create_session(config=config, session_id=session_id)
         metadata: dict[str, Any] = {
             **created.get("metadata", {}),
+            "artifact_root": str(self._repository.root_dir),
             "baseline_reward_definition": baseline_reward_definition.strip(),
             "iteration_index": -1,
             "no_improve_streak": 0,
@@ -101,6 +109,7 @@ class SessionService:
             "demo_artifacts": {},
             "selected_minor_robustness_risk_accepted": False,
         }
+        metadata = initialize_budget_metadata(created, metadata)
         self._repository.update_session(created["session_id"], metadata=metadata)
         refreshed = self._require_session(created["session_id"])
         checkpoint_payload = build_checkpoint_payload(refreshed, [], None)
@@ -124,25 +133,38 @@ class SessionService:
 
         metadata = dict(session.get("metadata", {}))
         baseline_reward = metadata.get("baseline_reward_definition", "reward = 0")
+        seed_candidate = self._repository.get_best_candidate(session_id)
+        seed_reward_definition = (
+            seed_candidate["reward_definition"] if seed_candidate is not None else baseline_reward
+        )
+        seed_reflection = (
+            self._repository.get_latest_reflection_for_candidate(seed_candidate["candidate_id"])
+            if seed_candidate is not None
+            else None
+        )
+        seed_reflection_summary = str(seed_reflection["summary"]) if seed_reflection else ""
         iteration_index = int(metadata.get("iteration_index", -1)) + 1
         pending_feedback_summary = str(metadata.get("pending_feedback_summary") or "").strip()
+        budget_plan = plan_iteration_budget(session, metadata, iteration_index)
+        runtime_metadata = dict(metadata)
+        if budget_plan is not None:
+            runtime_metadata.update(budget_plan.as_metadata_overrides())
+        runtime_session = dict(session)
+        runtime_session["metadata"] = runtime_metadata
 
         run_iteration_parameters = inspect.signature(
             self._iteration_engine.run_iteration
         ).parameters
+        run_iteration_kwargs: dict[str, Any] = {
+            "session": runtime_session,
+            "iteration_index": iteration_index,
+            "baseline_reward_definition": seed_reward_definition,
+        }
         if "feedback_summary" in run_iteration_parameters:
-            result = self._iteration_engine.run_iteration(
-                session=session,
-                iteration_index=iteration_index,
-                baseline_reward_definition=baseline_reward,
-                feedback_summary=pending_feedback_summary,
-            )
-        else:
-            result = self._iteration_engine.run_iteration(
-                session=session,
-                iteration_index=iteration_index,
-                baseline_reward_definition=baseline_reward,
-            )
+            run_iteration_kwargs["feedback_summary"] = pending_feedback_summary
+        if "seed_reflection_summary" in run_iteration_parameters:
+            run_iteration_kwargs["seed_reflection_summary"] = seed_reflection_summary
+        result = self._iteration_engine.run_iteration(**run_iteration_kwargs)
         candidate = self._repository.add_candidate(
             session_id=session_id,
             iteration_index=iteration_index,
@@ -169,6 +191,7 @@ class SessionService:
                 reward_definition=result.reward_definition,
                 iteration_index=iteration_index,
                 objective_text=session["objective_text"],
+                overrides=dict(result.performance_metrics.get("overrides", {})),
             ),
             primary_score=result.score,
         )
@@ -196,6 +219,15 @@ class SessionService:
         performance_summaries[candidate["candidate_id"]] = result.performance_summary
         robustness_assessments = dict(metadata.get("robustness_assessments", {}))
         robustness_assessments[candidate["candidate_id"]] = robustness.assessment.model_dump()
+        updated_metadata = record_iteration_budget_usage(
+            metadata,
+            candidate_id=candidate["candidate_id"],
+            iteration_index=iteration_index,
+            performance_metrics=result.performance_metrics,
+            robustness_runs=list(robustness.experiment_runs),
+            llm_calls_used=result.llm_calls_used,
+            plan=budget_plan,
+        )
 
         feedback_states = self._list_feedback_states(session_id)
         candidates = self._repository.list_candidates(session_id)
@@ -221,9 +253,16 @@ class SessionService:
         elif iteration_index + 1 >= session["max_iterations"]:
             next_status = SessionLifecycleState.COMPLETED
             next_stop_reason = "iteration_cap"
+        elif budget_exhausted_for_next_iteration(
+            session,
+            updated_metadata,
+            next_iteration_index=iteration_index + 1,
+        ):
+            next_status = SessionLifecycleState.COMPLETED
+            next_stop_reason = "budget_cap"
 
         updated_metadata = {
-            **metadata,
+            **updated_metadata,
             "iteration_index": iteration_index,
             "no_improve_streak": no_improve_streak,
             "last_score": current_signal.aggregate_score,
@@ -283,6 +322,10 @@ class SessionService:
             "best_candidate_id": updated_session["best_candidate_id"],
             "performance_summary": result.performance_summary,
             "feedback_summary": result.feedback_summary,
+            "remaining_budget": remaining_budget_snapshot(
+                updated_session,
+                dict(updated_session.get("metadata", {})),
+            ),
         }
 
     def pause_session(self, session_id: str) -> dict[str, Any]:

@@ -289,6 +289,33 @@ class SQLiteStore:
                 ),
             )
 
+    def get_latest_reflection_for_candidate(self, candidate_id: str) -> dict[str, Any] | None:
+        """
+        Fetch the most recent reflection for a candidate.
+
+        Args:
+            candidate_id: Candidate identifier.
+
+        Returns:
+            Reflection row or None when absent.
+        """
+        with self._connection() as conn:
+            row = conn.execute(
+                """
+                SELECT *
+                FROM reflections
+                WHERE candidate_id = ?
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                (candidate_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        result = dict(row)
+        result["proposed_changes"] = json.loads(result.pop("proposed_changes_json", "[]"))
+        return result
+
     def insert_feedback_entry(self, payload: dict[str, Any]) -> None:
         """
         Insert one feedback record linked to a candidate.

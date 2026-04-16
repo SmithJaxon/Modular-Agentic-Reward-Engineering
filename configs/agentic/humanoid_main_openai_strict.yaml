@@ -1,0 +1,74 @@
+version: 1
+run_name: humanoid_main_openai_strict
+
+environment:
+  backend: gymnasium
+  id: Humanoid-v4
+  seed: 7
+
+objective:
+  text_file: tools/fixtures/objectives/humanoid.txt
+  baseline_reward_file: tools/fixtures/rewards/humanoid_baseline.py
+
+agent:
+  primary_model: gpt-5.4-mini
+  reasoning_effort: high
+  fallback_model: gpt-4o-mini
+  planner_provider: openai
+  planner_fallback_enabled: false
+  planner_system_prompt_file: configs/agentic/prompts/primary_agent_humanoid.txt
+  planner_context_window: 20
+  planner_max_output_tokens: 1600
+  planner_max_retries: 1
+
+tools:
+  enabled:
+    - run_experiment
+    - run_probe_suite
+    - compare_candidates
+    - read_artifact
+    - export_report
+  max_parallel_workers: 3
+  per_call_timeout_seconds: 1800
+
+decision:
+  max_turns: 30
+  min_candidates_before_compare: 2
+  compare_every_new_candidates: 2
+  require_probe_before_compare: true
+
+budgets:
+  hard:
+    max_wall_clock_minutes: 180
+    max_training_timesteps: 1000000
+    max_evaluation_episodes: 150
+    max_api_input_tokens: 2500000
+    max_api_output_tokens: 600000
+    max_api_usd: 35.0
+    max_calls_per_model:
+      gpt-5.4-mini: 80
+      gpt-4o-mini: 30
+  soft:
+    target_env_return: 0.95
+    plateau_window_turns: 5
+    min_delta_return: 0.01
+    min_gain_per_1k_usd: 1.2
+    risk_ceiling: high
+
+training_defaults:
+  execution_mode: deterministic
+  ppo_num_envs: 1
+  ppo_total_timesteps: 4096
+  ppo_n_steps: 128
+  ppo_batch_size: 128
+  ppo_learning_rate: 0.0003
+  evaluation_episodes: 5
+  reflection_episodes: 2
+  reflection_interval_steps: 1024
+  llm_provider: none
+  llm_model: gpt-5.4-mini
+
+reporting:
+  save_decision_trace: true
+  save_tool_trace: true
+  save_budget_ledger: true

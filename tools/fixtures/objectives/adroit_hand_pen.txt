@@ -1,0 +1,3 @@
+Optimize a dexterous hand policy for `AdroitHandPen-v1` that robustly reorients and stabilizes the pen.
+Favor consistent task completion, stable contact dynamics, and smooth low-jerk control.
+Avoid reward shaping that can be exploited by stationary or oscillatory behaviors that do not progress task intent.

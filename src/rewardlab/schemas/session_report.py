@@ -34,6 +34,7 @@ class StopReason(StrEnum):
     USER_INTERRUPT = "user_interrupt"
     CONVERGENCE = "convergence"
     ITERATION_CAP = "iteration_cap"
+    BUDGET_CAP = "budget_cap"
     API_FAILURE_PAUSE = "api_failure_pause"
     ERROR = "error"
 

@@ -115,6 +115,33 @@ def test_session_report_accepts_valid_payload() -> None:
     assert report.best_candidate.candidate_id == "cand-1"
 
 
+def test_session_report_accepts_budget_cap_stop_reason() -> None:
+    """
+    Validate report schema accepts adaptive-budget termination.
+    """
+    report = SessionReport(
+        session_id="session-1",
+        status=SessionStatus.COMPLETED,
+        stop_reason=StopReason.BUDGET_CAP,
+        environment_backend=EnvironmentBackend.GYMNASIUM,
+        best_candidate=BestCandidateReport(
+            candidate_id="cand-1",
+            aggregate_score=0.81,
+            selection_summary="Stopped after adaptive budget exhaustion.",
+        ),
+        iterations=[
+            IterationReport(
+                iteration_index=0,
+                candidate_id="cand-1",
+                performance_summary="iteration 0 score=0.810",
+                risk_level=RiskLevel.LOW,
+                feedback_count=0,
+            )
+        ],
+    )
+    assert report.stop_reason is StopReason.BUDGET_CAP
+
+
 def test_session_report_accepts_running_payload_without_stop_reason() -> None:
     """
     Validate running report exports can omit stop reason until termination.

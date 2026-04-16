@@ -25,7 +25,7 @@ dev = [
   "ruff>=0.5.7,<0.8.0",
 ]
 llm = ["openai>=1.52,<2.0"]
-rl = ["gymnasium>=0.29,<1.0", "torch>=2.4,<3.0"]
+rl = ["gymnasium>=0.29,<1.0", "stable-baselines3>=2.4,<3.0", "torch>=2.4,<3.0"]
 
 [project.scripts]
 rewardlab = "rewardlab.cli.app:main"

@@ -1,0 +1,86 @@
+version: 1
+run_name: adroit_hand_pen_openai_eurekaish
+
+environment:
+  backend: gymnasium
+  id: AdroitHandPen-v1
+  seed: 13
+
+objective:
+  text_file: tools/fixtures/objectives/adroit_hand_pen.txt
+  baseline_reward_file: tools/fixtures/rewards/adroit_hand_pen_baseline.py
+
+agent:
+  primary_model: gpt-5.4-mini
+  reasoning_effort: high
+  fallback_model: gpt-4o-mini
+  planner_provider: openai
+  planner_fallback_enabled: true
+  planner_system_prompt_file: configs/agentic/prompts/primary_agent_dexterous_hand.txt
+  planner_context_window: 24
+  planner_max_output_tokens: 1800
+  planner_max_retries: 2
+
+tools:
+  enabled:
+    - run_experiment
+    - run_probe_suite
+    - compare_candidates
+    - read_artifact
+    - export_report
+  max_parallel_workers: 3
+  per_call_timeout_seconds: 3600
+
+decision:
+  max_turns: 16
+  min_candidates_before_compare: 2
+  compare_every_new_candidates: 1
+  require_probe_before_compare: true
+
+budgets:
+  hard:
+    max_wall_clock_minutes: 240
+    max_training_timesteps: 1500000
+    max_evaluation_episodes: 320
+    max_api_input_tokens: 3500000
+    max_api_output_tokens: 800000
+    max_api_usd: 60.0
+    max_calls_per_model:
+      gpt-5.4-mini: 120
+      gpt-4o-mini: 40
+  soft:
+    target_env_return: null
+    plateau_window_turns: 6
+    min_delta_return: 0.5
+    min_gain_per_1k_usd: 0.5
+    risk_ceiling: high
+
+training_defaults:
+  execution_mode: ppo
+  ppo_num_envs: 4
+  ppo_total_timesteps: 24576
+  ppo_n_steps: 512
+  ppo_batch_size: 1024
+  ppo_learning_rate: 0.0005
+  ppo_gamma: 0.99
+  ppo_gae_lambda: 0.95
+  ppo_clip_range: 0.2
+  ppo_n_epochs: 5
+  ppo_ent_coef: 0.0
+  ppo_vf_coef: 0.5
+  ppo_max_grad_norm: 1.0
+  ppo_activation_fn: elu
+  ppo_policy_hidden_sizes:
+    - 512
+    - 256
+    - 128
+  evaluation_episodes: 8
+  reflection_episodes: 2
+  reflection_interval_steps: 8192
+  llm_provider: none
+  llm_model: gpt-5.4-mini
+
+reporting:
+  save_decision_trace: true
+  save_tool_trace: true
+  save_budget_ledger: true

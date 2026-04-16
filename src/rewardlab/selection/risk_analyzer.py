@@ -53,7 +53,10 @@ class RiskAnalyzer:
 
         scores = [float(run.metrics["score"]) for run in robustness_runs]
         mean_score = sum(scores) / len(scores)
-        degradation_ratio = max(0.0, (primary_score - mean_score) / max(primary_score, 0.001))
+        degradation_ratio = max(
+            0.0,
+            (primary_score - mean_score) / max(abs(primary_score), 0.001),
+        )
         worst_run = min(robustness_runs, key=lambda run: float(run.metrics["score"]))
         worst_delta = primary_score - float(worst_run.metrics["score"])
 

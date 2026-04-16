@@ -33,6 +33,13 @@ class SessionRepository:
         self._events = EventLog(root_dir)
         self._store.initialize()
 
+    @property
+    def root_dir(self) -> Path:
+        """
+        Expose the repository data root used for SQLite and artifact storage.
+        """
+        return self._root_dir
+
     def create_session(
         self,
         config: SessionConfig,
@@ -222,6 +229,18 @@ class SessionRepository:
         self._store.insert_reflection(payload)
         self._events.append("reflection.added", payload)
         return payload
+
+    def get_latest_reflection_for_candidate(self, candidate_id: str) -> dict[str, Any] | None:
+        """
+        Fetch the newest reflection linked to a candidate.
+
+        Args:
+            candidate_id: Candidate identifier.
+
+        Returns:
+            Reflection metadata dictionary or None.
+        """
+        return self._store.get_latest_reflection_for_candidate(candidate_id)
 
     def checkpoint(self, session_id: str, payload: dict[str, Any]) -> Path:
         """

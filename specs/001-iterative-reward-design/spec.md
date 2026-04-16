@@ -2,7 +2,7 @@
 
 **Feature Branch**: `001-iterative-reward-design`  
 **Created**: 2026-04-02  
-**Status**: In Progress (Phases 1-5 implemented on 2026-04-02; Phase 6 remains for polish, runtime validation, and completion evidence capture)  
+**Status**: In Progress (Phases 1-6 are implemented, the real Gymnasium PPO engine and adaptive session-level budget manager were validated on 2026-04-06, local Gymnasium/MuJoCo experimentation is usable now, and Isaac Gym runtime validation remains outstanding)  
 **Input**: User description: "Create a pipeline that iteratively improves reinforcement learning reward functions through automated experiments, reflection, robustness checks against reward hacking, human feedback from visual demonstrations, and external peer-agent feedback until convergence or user interruption."
 
 ## Clarifications

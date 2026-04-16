@@ -19,7 +19,7 @@ from rewardlab.schemas.session_config import EnvironmentBackend, FeedbackGate, S
 
 session_app = typer.Typer(no_args_is_help=True)
 OBJECTIVE_FILE_OPTION = typer.Option(..., exists=True, dir_okay=False)
-BASELINE_FILE_OPTION = typer.Option(..., exists=True, dir_okay=False)
+BASELINE_FILE_OPTION = typer.Option(None, exists=True, dir_okay=False)
 REQUIRED_TEXT_OPTION = typer.Option(...)
 JSON_OPTION = typer.Option(False, "--json")
 OPTIONAL_OUTPUT_PATH = typer.Option(None)
@@ -53,18 +53,76 @@ def _emit(payload: dict[str, Any], json_output: bool) -> None:
 @session_app.command("start")
 def start(
     objective_file: Path = OBJECTIVE_FILE_OPTION,
-    baseline_reward_file: Path = BASELINE_FILE_OPTION,
+    baseline_reward_file: Path | None = BASELINE_FILE_OPTION,
     environment_id: str = REQUIRED_TEXT_OPTION,
     environment_backend: str = REQUIRED_TEXT_OPTION,
     no_improve_limit: int = typer.Option(..., min=1),
     max_iterations: int = typer.Option(..., min=1),
     feedback_gate: str = REQUIRED_TEXT_OPTION,
+    execution_mode: str = typer.Option("deterministic"),
+    llm_provider: str = typer.Option("none"),
+    llm_model: str = typer.Option("gpt-4o-mini"),
+    budget_mode: str = typer.Option("adaptive"),
+    total_training_timesteps: int | None = typer.Option(None, min=64),
+    total_evaluation_episodes: int | None = typer.Option(None, min=1),
+    max_llm_calls: int | None = typer.Option(None, min=0),
+    target_reflection_checkpoints: int | None = typer.Option(None, min=1),
+    candidate_train_floor_timesteps: int | None = typer.Option(None, min=64),
+    candidate_train_ceiling_timesteps: int | None = typer.Option(None, min=64),
+    ppo_total_timesteps: int = typer.Option(4096, min=64),
+    ppo_num_envs: int = typer.Option(4, min=1),
+    ppo_n_steps: int = typer.Option(256, min=32),
+    ppo_batch_size: int = typer.Option(128, min=32),
+    ppo_learning_rate: float = typer.Option(3e-4, min=1e-6),
+    evaluation_episodes: int = typer.Option(5, min=1),
+    reflection_episodes: int = typer.Option(2, min=1),
+    reflection_interval_steps: int = typer.Option(1024, min=64),
+    train_seed: int = typer.Option(7),
+    robustness_budget_scale: float = typer.Option(0.5, min=0.1),
+    human_feedback_enabled: bool = typer.Option(
+        False,
+        "--human-feedback-enabled/--human-feedback-disabled",
+    ),
+    peer_feedback_enabled: bool = typer.Option(
+        False,
+        "--peer-feedback-enabled/--peer-feedback-disabled",
+    ),
     session_id: str | None = typer.Option(None),
     json_output: bool = JSON_OPTION,
 ) -> None:
     """
-    Start a new optimization session from objective and baseline reward files.
+    Start a new optimization session from objective text and an optional baseline reward file.
     """
+    metadata: dict[str, str | int | float | bool] = {
+        "execution_mode": execution_mode,
+        "llm_provider": llm_provider,
+        "llm_model": llm_model,
+        "budget_mode": budget_mode,
+        "ppo_total_timesteps": ppo_total_timesteps,
+        "ppo_num_envs": ppo_num_envs,
+        "ppo_n_steps": ppo_n_steps,
+        "ppo_batch_size": ppo_batch_size,
+        "ppo_learning_rate": ppo_learning_rate,
+        "evaluation_episodes": evaluation_episodes,
+        "reflection_episodes": reflection_episodes,
+        "reflection_interval_steps": reflection_interval_steps,
+        "train_seed": train_seed,
+        "robustness_budget_scale": robustness_budget_scale,
+        "human_feedback_enabled": human_feedback_enabled,
+        "peer_feedback_enabled": peer_feedback_enabled,
+    }
+    if total_training_timesteps is not None:
+        metadata["total_training_timesteps"] = total_training_timesteps
+    if total_evaluation_episodes is not None:
+        metadata["total_evaluation_episodes"] = total_evaluation_episodes
+    if max_llm_calls is not None:
+        metadata["max_llm_calls"] = max_llm_calls
+    if target_reflection_checkpoints is not None:
+        metadata["target_reflection_checkpoints"] = target_reflection_checkpoints
+    if candidate_train_floor_timesteps is not None:
+        metadata["candidate_train_floor_timesteps"] = candidate_train_floor_timesteps
+    if candidate_train_ceiling_timesteps is not None:
+        metadata["candidate_train_ceiling_timesteps"] = candidate_train_ceiling_timesteps
     config = SessionConfig(
         objective_text=objective_file.read_text(encoding="utf-8").strip(),
         environment_id=environment_id,
@@ -72,8 +130,13 @@ def start(
         no_improve_limit=no_improve_limit,
         max_iterations=max_iterations,
         feedback_gate=FeedbackGate(feedback_gate),
+        metadata=metadata,
     )
-    baseline_reward = baseline_reward_file.read_text(encoding="utf-8")
+    baseline_reward = (
+        baseline_reward_file.read_text(encoding="utf-8")
+        if baseline_reward_file is not None
+        else ""
+    )
     created = _service().start_session(
         config=config,
         baseline_reward_definition=baseline_reward,
