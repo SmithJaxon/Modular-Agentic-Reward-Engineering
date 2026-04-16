@@ -12,8 +12,11 @@ from pathlib import Path
 from rewardlab.agentic.spec_loader import load_experiment_spec
 from rewardlab.agentic.tools.compare_candidates import CompareCandidatesTool
 from rewardlab.agentic.tools.estimate_cost_and_risk import EstimateCostAndRiskTool
+from rewardlab.agentic.tools.run_robustness_probes import RunRobustnessProbesTool
 from rewardlab.agentic.tools.summarize_run_artifacts import SummarizeRunArtifactsTool
 from rewardlab.agentic.tools.validate_reward_program import ValidateRewardProgramTool
+from rewardlab.experiments.artifacts import RunArtifactWriter
+from rewardlab.experiments.execution_service import ExperimentExecutionService
 from rewardlab.llm.openai_client import ChatCompletionResponse
 from rewardlab.schemas.agent_experiment import (
     AgentBudgetLedger,
@@ -22,6 +25,7 @@ from rewardlab.schemas.agent_experiment import (
 )
 from rewardlab.schemas.experiment_run import ExecutionMode, ExperimentRun, RunStatus, RunType
 from rewardlab.schemas.reward_candidate import RewardCandidate
+from rewardlab.schemas.robustness_assessment import RiskLevel, RobustnessAssessment
 
 
 class FakeAnalyzerClient:
@@ -43,6 +47,42 @@ class FakeAnalyzerClient:
             raw_response=None,
             total_tokens=self._total_tokens,
         )
+
+
+class FakeRobustnessRunner:
+    """Runner double returning deterministic robustness probe outputs."""
+
+    def run_candidate_probes(self, **kwargs):  # pragma: no cover - shape asserted by test
+        """Return one completed robustness probe and a high-risk assessment."""
+
+        candidate = kwargs["candidate"]
+        primary_run = kwargs["primary_run"]
+        probe_run = ExperimentRun(
+            run_id=f"{candidate.candidate_id}-robustness-001",
+            candidate_id=candidate.candidate_id,
+            backend=primary_run.backend,
+            environment_id=primary_run.environment_id,
+            run_type=RunType.ROBUSTNESS,
+            execution_mode=ExecutionMode.ACTUAL_BACKEND,
+            variant_label="seed-17",
+            status=RunStatus.COMPLETED,
+            metrics={"episode_reward": 0.4},
+            artifact_refs=["manifest.json", "metrics.json"],
+            started_at=datetime(2026, 4, 10, 12, 6, tzinfo=UTC),
+            ended_at=datetime(2026, 4, 10, 12, 7, tzinfo=UTC),
+        )
+        assessment = RobustnessAssessment(
+            assessment_id=f"{candidate.candidate_id}-robustness",
+            candidate_id=candidate.candidate_id,
+            backend=primary_run.backend,
+            primary_run_id=primary_run.run_id,
+            probe_run_ids=[probe_run.run_id],
+            variant_count=1,
+            degradation_ratio=0.55,
+            risk_level=RiskLevel.HIGH,
+            risk_notes="Worst probe underperformed significantly.",
+        )
+        return [probe_run], assessment
 
 
 def _record_from_fixture() -> AgentExperimentRecord:
@@ -178,3 +218,56 @@ def test_validate_reward_program_accepts_valid_candidate_source() -> None:
     assert result.status == "ok"
     assert result.payload["validation_status"] == "valid"
     assert result.payload["entrypoint_name"] == "compute_reward"
+
+
+def test_run_robustness_probes_returns_assessment_payload() -> None:
+    """Robustness tool should return probe runs and risk assessment payload."""
+
+    base_record = _record_from_fixture()
+    runtime_dir = ".agentic-test-runtime-robust-tool"
+    spec = base_record.spec.model_copy(
+        update={
+            "outputs": base_record.spec.outputs.model_copy(update={"runtime_dir": runtime_dir})
+        }
+    )
+    record = base_record.model_copy(update={"spec": spec})
+    candidate = RewardCandidate(
+        candidate_id="experiment-tool-tests-candidate-000",
+        session_id=record.experiment_id,
+        iteration_index=0,
+        reward_definition="def compute_reward(observation):\n    return 1.0\n",
+        change_summary="baseline",
+        aggregate_score=0.9,
+    )
+    performance_run = ExperimentRun(
+        run_id="experiment-tool-tests-run-001",
+        candidate_id=candidate.candidate_id,
+        backend=record.spec.environment.backend,
+        environment_id=record.spec.environment.id,
+        run_type=RunType.PERFORMANCE,
+        execution_mode=ExecutionMode.ACTUAL_BACKEND,
+        variant_label="default",
+        status=RunStatus.COMPLETED,
+        metrics={"episode_reward": 0.9},
+        artifact_refs=["manifest.json", "metrics.json"],
+        started_at=datetime(2026, 4, 10, 12, 0, tzinfo=UTC),
+        ended_at=datetime(2026, 4, 10, 12, 5, tzinfo=UTC),
+    )
+    tool = RunRobustnessProbesTool(
+        execution_service=ExperimentExecutionService(
+            artifact_writer=RunArtifactWriter(Path(runtime_dir) / "runs")
+        ),
+        robustness_runner_factory=lambda *_: FakeRobustnessRunner(),
+    )
+
+    result = tool.execute(
+        record=record,
+        candidates=[candidate],
+        runs=[performance_run],
+        action_input={"candidate_id": candidate.candidate_id},
+    )
+
+    assert result.status == "ok"
+    assert result.payload["candidate_id"] == candidate.candidate_id
+    assert result.payload["assessment"]["risk_level"] == "high"
+    assert len(result.payload["robustness_runs"]) == 1

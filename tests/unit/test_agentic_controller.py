@@ -181,6 +181,46 @@ def test_controller_heuristic_compares_candidates_on_stall() -> None:
     assert action.action_type.value == "compare_candidates"
 
 
+def test_controller_heuristic_runs_robustness_probes_after_stall() -> None:
+    """Fallback controller should schedule robustness probes after stalled progress."""
+
+    original = _record_from_fixture()
+    payload = original.spec.model_dump(mode="python")
+    allowed_tools = payload["tool_policy"]["allowed_tools"]
+    if "run_robustness_probes" not in allowed_tools:
+        allowed_tools.append("run_robustness_probes")
+    spec = AgentExperimentSpec.model_validate(payload)
+    record = original.model_copy(update={"spec": spec})
+
+    candidate = RewardCandidate(
+        candidate_id="experiment-test-candidate-000",
+        session_id="experiment-test",
+        iteration_index=0,
+        reward_definition="def reward(observation):\n    return 1.0\n",
+        change_summary="baseline",
+        aggregate_score=0.9,
+    )
+    run = _completed_run(
+        record=record,
+        run_id="experiment-test-run-001",
+        candidate_id=candidate.candidate_id,
+        reward=0.9,
+    )
+    action, _ = ControllerAgent(openai_client=NoCredentialClient()).choose_action(
+        ControllerContext(
+            record=record,
+            candidates=[candidate],
+            runs=[run],
+            recent_decisions=[{"action_type": "compare_candidates"}],
+            failed_actions=0,
+            no_improve_streak=1,
+        )
+    )
+
+    assert action.action_type.value == "run_robustness_probes"
+    assert action.action_input["primary_run_id"] == "experiment-test-run-001"
+
+
 def test_controller_heuristic_requests_human_feedback_when_enabled() -> None:
     """Fallback controller should request human feedback when policy allows it."""
 

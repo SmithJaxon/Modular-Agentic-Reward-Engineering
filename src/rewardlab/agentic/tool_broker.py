@@ -16,6 +16,7 @@ from rewardlab.agentic.tools.estimate_cost_and_risk import EstimateCostAndRiskTo
 from rewardlab.agentic.tools.propose_reward import ProposeRewardTool
 from rewardlab.agentic.tools.request_human_feedback import RequestHumanFeedbackTool
 from rewardlab.agentic.tools.run_experiment import RunExperimentTool
+from rewardlab.agentic.tools.run_robustness_probes import RunRobustnessProbesTool
 from rewardlab.agentic.tools.summarize_run_artifacts import SummarizeRunArtifactsTool
 from rewardlab.agentic.tools.validate_reward_program import ValidateRewardProgramTool
 from rewardlab.schemas.agent_experiment import ActionType, AgentExperimentRecord
@@ -24,6 +25,7 @@ from rewardlab.schemas.reward_candidate import RewardCandidate
 
 ACTION_TOOL_NAME = {
     ActionType.RUN_EXPERIMENT: "run_experiment",
+    ActionType.RUN_ROBUSTNESS_PROBES: "run_robustness_probes",
     ActionType.PROPOSE_REWARD: "propose_reward_revision",
     ActionType.SUMMARIZE_RUN_ARTIFACTS: "summarize_run_artifacts",
     ActionType.VALIDATE_REWARD_PROGRAM: "validate_reward_program",
@@ -41,6 +43,7 @@ class ToolBroker:
         self,
         *,
         run_experiment_tool: RunExperimentTool,
+        run_robustness_probes_tool: RunRobustnessProbesTool,
         propose_reward_tool: ProposeRewardTool,
         summarize_run_artifacts_tool: SummarizeRunArtifactsTool,
         validate_reward_program_tool: ValidateRewardProgramTool,
@@ -51,6 +54,7 @@ class ToolBroker:
         """Store tool executors used during autonomous control."""
 
         self.run_experiment_tool = run_experiment_tool
+        self.run_robustness_probes_tool = run_robustness_probes_tool
         self.propose_reward_tool = propose_reward_tool
         self.summarize_run_artifacts_tool = summarize_run_artifacts_tool
         self.validate_reward_program_tool = validate_reward_program_tool
@@ -168,6 +172,13 @@ class ToolBroker:
                 candidates=candidates,
                 action_input=action.action_input,
                 run_count=len(runs),
+            )
+        if action.action_type == ActionType.RUN_ROBUSTNESS_PROBES:
+            return self.run_robustness_probes_tool.execute(
+                record=record,
+                candidates=candidates,
+                runs=runs,
+                action_input=action.action_input,
             )
         if action.action_type == ActionType.PROPOSE_REWARD:
             return self.propose_reward_tool.execute(

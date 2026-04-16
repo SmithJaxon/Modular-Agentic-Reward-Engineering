@@ -166,6 +166,8 @@ def test_openai_reward_designer_builds_valid_json_request_and_response() -> None
     assert "Forward speed improved" in captured_request.messages[1].content
     assert "fitness_metric_mean" in captured_request.messages[1].content
     assert "x_velocity" in captured_request.messages[1].content
+    assert "Candidate history" in captured_request.messages[1].content
+    assert "Recent robustness context" in captured_request.messages[1].content
     assert result.change_summary.startswith("Increase forward-velocity weight")
     assert "def reward(" in result.reward_definition
     assert result.proposed_changes == [
@@ -281,3 +283,41 @@ def test_openai_reward_designer_retries_after_invalid_model_output() -> None:
 
     assert call_count == 2
     assert "Drop kwargs" in result.change_summary
+
+
+def test_openai_reward_designer_rejects_duplicate_reward_signature() -> None:
+    """Model-backed generation should reject reward definitions reused from history."""
+
+    candidate = build_candidate()
+
+    class FakeOpenAIClient:
+        """Fake client returning a candidate definition identical to prior history."""
+
+        has_credentials = True
+
+        def chat_completion(
+            self,
+            request: ChatCompletionRequest,
+        ) -> ChatCompletionResponse:
+            """Return a duplicate reward definition payload."""
+
+            del request
+            return ChatCompletionResponse(
+                content=(
+                    '{"reward_definition": '
+                    '"def reward(observation, x_velocity, reward_alive, reward_quadctrl, '
+                    'terminated):\\n    if terminated:\\n        return -5.0\\n    '
+                    'return float(x_velocity + reward_alive - reward_quadctrl)\\n", '
+                    '"change_summary": "Duplicate definition.", '
+                    '"proposed_changes": ["No-op duplicate."]}'
+                ),
+                raw_response=None,
+            )
+
+    designer = OpenAIRewardDesigner(
+        openai_client=FakeOpenAIClient(),
+        config=RewardDesignConfig(mode=RewardDesignerMode.OPENAI),
+    )
+
+    with pytest.raises(RuntimeError, match="previously used reward definition"):
+        designer.design_next_candidate(build_request(prior_candidates=(candidate,)))
