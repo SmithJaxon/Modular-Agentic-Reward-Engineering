@@ -3,7 +3,7 @@
 Auto-generated from all feature plans. Last updated: 2026-04-02
 
 ## Active Technologies
-- Python 3.12 + PyTorch, Gymnasium, Isaac Gym, OpenAI API client, Pydantic, Typer (001-iterative-reward-design)
+- Python 3.12 + PyTorch, Gymnasium, OpenAI API client, Pydantic, Typer (001-iterative-reward-design)
 - Local artifacts (`JSONL`, `JSON`, rendered media) and lightweight SQLite metadata (001-iterative-reward-design)
 
 - Python 3.12 + PyTorch, Gymnasium, OpenAI API client, Pydantic, Typer (001-iterative-reward-design)
@@ -24,7 +24,7 @@ cd src; pytest; ruff check .
 Python 3.12: Follow standard conventions
 
 ## Recent Changes
-- 001-iterative-reward-design: Added Python 3.12 + PyTorch, Gymnasium, Isaac Gym, OpenAI API client, Pydantic, Typer
+- 001-iterative-reward-design: Added Python 3.12 + PyTorch, Gymnasium, OpenAI API client, Pydantic, Typer
 
 - 001-iterative-reward-design: Added Python 3.12 + PyTorch, Gymnasium, OpenAI API client, Pydantic, Typer
 
@@ -33,7 +33,8 @@ Python 3.12: Follow standard conventions
 
 - Active worktree for this thread: `C:\Users\smith\LocalOnlyClasses\AdvAi\Project-agent-autonomous-pass`
 - After worktree creation, all edits, tests, temporary files, virtual environments, and generated artifacts for this thread MUST stay inside the active worktree.
-- The execution target is the active follow-on backlog for this thread. `specs/001-iterative-reward-design/tasks.md` is complete in this worktree, and the current remaining implementation backlog is `specs/003-real-experiment-readiness/tasks.md`.
+- The execution target is the active follow-on backlog for this thread. `specs/001-iterative-reward-design/tasks.md` and `specs/003-real-experiment-readiness/tasks.md` are complete in this worktree. The active implementation backlog is `specs/004-agent-tool-calling-architecture/`.
+- The active runtime target remains Gymnasium-only. `CartPole-v1` is the smoke path, and `Humanoid-v4` PPO evaluation is the main real-execution target while control architecture migrates from `session` pipeline to `agent_tools`.
 - For each chunk, the default loop is: confirm scope, add or update tests, implement or revise code, run the smallest relevant validation set, fix failures, rerun validation, then advance only when the chunk is stable.
 - Use sub-agents aggressively for independent tasks with disjoint file ownership. Keep shared-file work, critical-path integration, and final verification in the main agent.
 - The agent SHOULD make frequent, meaningful commits during execution rather than carrying large uncommitted batches for long periods.

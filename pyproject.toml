@@ -26,9 +26,9 @@ dev = [
   "pytest-xdist>=3.6,<4.0",
   "ruff>=0.6,<1.0",
 ]
-gymnasium = ["gymnasium>=0.29,<1.0"]
+gymnasium = ["gymnasium[mujoco]>=1.2,<2.0"]
+ppo = ["stable-baselines3>=2.3,<3.0"]
 torch = ["torch>=2.4,<3.0"]
-isaacgym = []
 
 [project.scripts]
 rewardlab = "rewardlab.cli.app:main"
@@ -73,5 +73,4 @@ minversion = "8.0"
 addopts = "-ra"
 markers = [
   "real_gymnasium: requires approved Gymnasium dependencies in the worktree .venv and an explicit opt-in flag",
-  "real_isaacgym: requires an approved Isaac Gym runtime in the worktree .venv and an explicit opt-in flag",
 ]

@@ -5,11 +5,7 @@ Last Updated: 2026-04-02
 #>
 
 param(
-    [switch]$IncludeRealGymnasium,
-    [switch]$IncludeRealIsaacGym,
-    [string]$IsaacEnvId,
-    [string]$IsaacFactory,
-    [string]$IsaacValidator
+    [switch]$IncludeRealGymnasium
 )
 
 $ErrorActionPreference = "Stop"
@@ -68,23 +64,9 @@ try {
         "no:cacheprovider"
     )
 
-    if ($IncludeRealGymnasium -or $IncludeRealIsaacGym) {
+    if ($IncludeRealGymnasium) {
         $smokeArguments = @()
-        if ($IncludeRealGymnasium) {
-            $smokeArguments += "-Gymnasium"
-        }
-        if ($IncludeRealIsaacGym) {
-            $smokeArguments += "-IsaacGym"
-        }
-        if ($IsaacEnvId) {
-            $smokeArguments += @("-IsaacEnvId", $IsaacEnvId)
-        }
-        if ($IsaacFactory) {
-            $smokeArguments += @("-IsaacFactory", $IsaacFactory)
-        }
-        if ($IsaacValidator) {
-            $smokeArguments += @("-IsaacValidator", $IsaacValidator)
-        }
+        $smokeArguments += "-Gymnasium"
 
         Write-Host "==> Run requested real backend smokes"
         & $smokeScript @smokeArguments

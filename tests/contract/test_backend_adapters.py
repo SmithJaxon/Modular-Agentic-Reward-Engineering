@@ -1,5 +1,5 @@
 """
-Summary: Contract tests for Gymnasium and Isaac Gym backend adapters.
+Summary: Contract tests for the Gymnasium backend adapter.
 Created: 2026-04-02
 Last Updated: 2026-04-02
 """
@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from rewardlab.experiments.backends.base import BackendEpisodeResult
 from rewardlab.experiments.backends.gymnasium_backend import GymnasiumBackend
-from rewardlab.experiments.backends.isaacgym_backend import IsaacGymBackend
 
 
 class FakeEnvironment:
@@ -52,18 +51,4 @@ def test_gymnasium_backend_runs_episode_with_injected_factory() -> None:
     assert isinstance(result, BackendEpisodeResult)
     assert result.total_reward == 6.0
     assert result.metadata["backend"] == "gymnasium"
-    assert environment.closed is True
-
-
-def test_isaacgym_backend_runs_episode_with_injected_factory() -> None:
-    """The Isaac Gym adapter should support rollouts through the shared interface."""
-
-    environment = FakeEnvironment([2.5, 1.5])
-    backend = IsaacGymBackend(environment_factory=lambda **_: environment)
-
-    result = backend.run_episode("isaac-ant-v0", policy=lambda _: 1, seed=3)
-
-    assert isinstance(result, BackendEpisodeResult)
-    assert result.total_reward == 4.0
-    assert result.metadata["backend"] == "isaacgym"
     assert environment.closed is True

@@ -29,12 +29,12 @@
   monolithic experiment type (poor traceability).
 
 ## Decision 4b: Support dual environment backends via adapter interface
-- Decision: Add backend adapters for `gymnasium` and `isaacgym`, selected by a
+- Decision: Add backend adapters for `gymnasium`, selected by a
   required session parameter.
 - Rationale: Enables direct comparability to EUREKA-style experiments while
   retaining flexibility to run lighter Gymnasium workflows when desired.
 - Alternatives considered: Gymnasium-only (insufficient for target comparison);
-  Isaac Gym-only (reduced portability and local testing flexibility).
+  Gymnasium-only execution keeps the active runtime simpler and locally reproducible.
 
 ## Decision 5: Treat convergence and gating controls as explicit input parameters
 - Decision: Require no-improvement threshold, max-iteration limit, and feedback

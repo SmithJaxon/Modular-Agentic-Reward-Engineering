@@ -74,6 +74,9 @@ class ChatCompletionResponse:
 
     content: str
     raw_response: Any
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    total_tokens: int | None = None
 
 
 class OpenAIClient:
@@ -169,7 +172,14 @@ class OpenAIClient:
 
         response = client.chat.completions.create(**payload)
         content = _extract_message_content(response)
-        return ChatCompletionResponse(content=content, raw_response=response)
+        prompt_tokens, completion_tokens, total_tokens = _extract_usage(response)
+        return ChatCompletionResponse(
+            content=content,
+            raw_response=response,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=total_tokens,
+        )
 
 
 def _parse_timeout(raw_value: str | None) -> float | None:
@@ -198,3 +208,19 @@ def _extract_message_content(response: Any) -> str:
     if content is None:
         return ""
     return str(content)
+
+
+def _extract_usage(response: Any) -> tuple[int | None, int | None, int | None]:
+    """Extract normalized token usage counters from an SDK response when present."""
+
+    usage = getattr(response, "usage", None)
+    if usage is None:
+        return None, None, None
+    prompt_tokens = getattr(usage, "prompt_tokens", None)
+    completion_tokens = getattr(usage, "completion_tokens", None)
+    total_tokens = getattr(usage, "total_tokens", None)
+    return (
+        int(prompt_tokens) if isinstance(prompt_tokens, int) else None,
+        int(completion_tokens) if isinstance(completion_tokens, int) else None,
+        int(total_tokens) if isinstance(total_tokens, int) else None,
+    )

@@ -1,0 +1,4 @@
+Optimize a Gymnasium Humanoid reward for fast, stable forward locomotion.
+Final candidate quality should be measured with PPO training on Gymnasium
+Humanoid and reported as the average across 5 runs of the best checkpoint
+mean x-velocity observed over 10 evaluation checkpoints.

@@ -1,211 +1,293 @@
 # Next Agent Handoff
 
+## Superseded Notice (2026-04-10)
+
+This handoff reflects the finalized `003-real-experiment-readiness` tranche and
+contains historical blockers that have since been resolved.
+
+For active implementation direction, use:
+
+- `specs/004-agent-tool-calling-architecture/plan.md`
+- `specs/004-agent-tool-calling-architecture/quickstart.md`
+
 ## Workspace
 
-- Active worktree: `C:\Users\smith\LocalOnlyClasses\AdvAi\Project-agent-autonomous-pass`
-- Active branch: `agent-autonomous-pass`
-- Stay in this worktree only. Do not touch the sibling non-worktree checkout.
+- Active worktree:
+  `C:\Users\smith\LocalOnlyClasses\AdvAi\Project-agent-autonomous-pass`
+- Stay inside this worktree only.
+- Keep installs, temp files, artifacts, and reports inside this worktree.
 
-## Guardrails
+## User Direction
 
-- Keep all edits, tests, temp files, artifacts, and virtualenv activity inside
-  this worktree.
-- No downloads, installs, upgrades, package fetches, model pulls, or dataset
-  fetches without user approval.
-- Any approved install must stay inside `.venv\`.
-- Any git `add` or `commit` still needs user approval because worktree git
-  metadata lives under the sibling repo's `.git\worktrees\...` path.
-- No destructive cleanup outside normal worktree-local temp files unless the
-  user approves it.
+- Isaac is out of the active runtime path because the current machine does not
+  support it.
+- The project should focus on Gymnasium only.
+- The target is a full Gymnasium Humanoid experiment loop where:
+  - PPO evaluation follows the EUREKA-style shape
+  - the agent actually iterates on reward functions
+  - the next reward candidate is generated from prior reward code, reflection,
+    and run metrics
 
-## Stable Committed State
+## Current State
 
-Latest clean commits on this branch:
+### Runtime Scope
 
-1. `f89047e` `Add real execution foundations`
-2. `1118030` `Add actual Gymnasium execution path`
-3. `eb69db4` `Record real Gymnasium smoke validation`
+- Active backend: `gymnasium`
+- Removed from the active path:
+  - Isaac-specific runtime branches
+  - Isaac-specific tests
+  - Isaac-specific fixtures
+  - Isaac-specific contract/tooling references
 
-Committed and already stable before this handoff:
+### Humanoid PPO Path
 
-- Shared real-execution foundations (`T001`, `T003`, `T004`, `T005` to `T010`)
-- Actual Gymnasium backend path (`T011` to `T018`)
-- Approved worktree-local `gymnasium` install recorded in docs
-- Real Gymnasium smoke evidence recorded in
-  `specs/003-real-experiment-readiness/verification-report.md`
-- `T031` marked complete
+- `src/rewardlab/experiments/gymnasium_runner.py` implements Gymnasium
+  Humanoid PPO evaluation for:
+  - `Humanoid-v4`
+  - `Humanoid-v5`
+- Evaluation protocol:
+  - 5 PPO runs
+  - 10 checkpoints per run
+  - final score = average of the per-run best checkpoint mean `x_velocity`
+- Missing `stable_baselines3` now fails explicitly instead of silently falling
+  back.
 
-## Current Uncommitted State
+### Reward Iteration Path
 
-The worktree now contains a validated but uncommitted US2, US3, and T030 slice.
-No commit exists yet because that still requires user approval.
+- `src/rewardlab/orchestrator/reward_designer.py` now exists and is the key new
+  integration point.
+- Reward-designer modes:
+  - `deterministic`
+  - `openai`
+- `src/rewardlab/orchestrator/session_service.py` now routes candidate
+  generation through the configured reward designer.
+- Actual-backend iteration now includes:
+  - current reward candidate
+  - latest reflection
+  - latest completed run metrics
+  - environment id/backend context
+- Invalid model output, unsupported callable parameters, or missing OpenAI
+  credentials now pause the session with an explicit design error.
 
-Completed in the current uncommitted diff:
+## Important Distinction
 
-- `T019` to `T023`: real robustness execution, stored assessments, actual
-  feedback artifact refs, and robustness-aware reporting/selection
-- `T024` to `T029`: Isaac runtime readiness handling, actual-backend session
-  support, offline-safe Isaac tests, and operator guidance for factory-based
-  Isaac execution
-- `T030`: new backend smoke wrapper plus updated full-validation script
+This was the main confusion in the previous pass:
 
-Key code and docs touched:
+- `REWARDLAB_EXECUTION_MODE=actual_backend`
+  means real Gymnasium execution
+- `REWARDLAB_REWARD_DESIGN_MODE=openai`
+  means model-backed reward iteration
 
-- `src/rewardlab/experiments/artifacts.py`
-- `src/rewardlab/experiments/backends/isaacgym_backend.py`
-- `src/rewardlab/experiments/isaacgym_runner.py`
-- `src/rewardlab/experiments/robustness_runner.py`
-- `src/rewardlab/feedback/human_feedback_service.py`
-- `src/rewardlab/feedback/peer_feedback_client.py`
-- `src/rewardlab/orchestrator/reporting.py`
-- `src/rewardlab/orchestrator/session_service.py`
-- `src/rewardlab/schemas/robustness_assessment.py`
-- `src/rewardlab/selection/risk_analyzer.py`
-- `tests/contract/test_isaacgym_backend_runtime.py`
-- `tests/e2e/test_isaac_actual_experiment.py`
-- `tests/integration/test_isaac_real_experiment.py`
-- `tests/integration/test_real_demo_artifacts.py`
-- `tests/integration/test_real_robustness_pipeline.py`
-- `tests/integration/test_reward_hack_probes.py`
-- `tests/unit/test_real_execution_foundations.py`
-- `tools/quality/run_full_validation.ps1`
-- `tools/quality/run_real_backend_smokes.ps1`
+If the second flag is not set, the system still uses the deterministic local
+reward designer even though PPO execution is real. That is why the earlier
+Humanoid PPO run consumed no tokens.
+
+## What Changed In This Pass
+
+### Earlier Gymnasium Pivot
+
+- Removed Isaac-specific runtime code/tests/contracts/tooling.
+- Kept real Gymnasium smoke and artifact/report plumbing working.
+- Added Humanoid fixtures:
+  - `tools/fixtures/objectives/humanoid_run.txt`
+  - `tools/fixtures/rewards/humanoid_baseline.py`
+  - `tools/fixtures/experiments/gymnasium_humanoid.json`
+
+### Real Humanoid PPO Support
+
+- Implemented actual Humanoid PPO evaluation in:
+  - `src/rewardlab/experiments/gymnasium_runner.py`
+- Installed approved PPO dependency in `.venv`:
+  - `stable_baselines3==2.8.0`
+
+### New Agent-Driven Reward Iteration
+
+- Added:
+  - `src/rewardlab/orchestrator/reward_designer.py`
+  - `tests/unit/test_reward_designer.py`
+- Updated:
+  - `src/rewardlab/orchestrator/iteration_engine.py`
+  - `src/rewardlab/orchestrator/session_service.py`
+  - `tests/integration/test_gymnasium_real_experiment.py`
+- Rewrote active docs to explain the new explicit reward-designer mode.
+
+## Real Humanoid Baseline Run Already Completed
+
+The worktree has already completed one real `Humanoid-v4` PPO session.
+
+### Session
+
+- Session id: `session-real-humanoid-ppo-20260406`
+- Environment: `Humanoid-v4`
+- Backend: `gymnasium`
+- Execution mode: `actual_backend`
+
+### Result
+
+- `fitness_metric_name`: `mean_x_velocity`
+- `fitness_metric_mean`: `0.482898`
+- `per_run_best_mean_x_velocity`:
+  - `0.577095`
+  - `0.441847`
+  - `0.515695`
+  - `0.531256`
+  - `0.348597`
+
+### Persisted Evidence
+
+- Manifest:
+  `C:\Users\smith\LocalOnlyClasses\AdvAi\Project-agent-autonomous-pass\.rewardlab-humanoid-run\runs\session-real-humanoid-ppo-20260406-run-001\manifest.json`
+- Metrics:
+  `C:\Users\smith\LocalOnlyClasses\AdvAi\Project-agent-autonomous-pass\.rewardlab-humanoid-run\runs\session-real-humanoid-ppo-20260406-run-001\metrics.json`
+- Report:
+  `C:\Users\smith\LocalOnlyClasses\AdvAi\Project-agent-autonomous-pass\.rewardlab-humanoid-run\reports\session-real-humanoid-ppo-20260406.report.json`
+
+Important:
+
+- This run used the real PPO backend.
+- It predated the new OpenAI reward-designer path.
+- It is therefore a real execution baseline, not a real token-consuming reward
+  search baseline.
+
+## Validation Completed
+
+### Earlier Runtime Validation
+
+- `ruff` on touched Gymnasium/runtime files: PASS
+- targeted mypy on touched runtime files: PASS
+- `tests/integration/test_gymnasium_real_experiment.py`: PASS
+- real Gymnasium smoke wrapper: PASS
+
+### Reward-Designer Validation
+
+- `ruff` on:
+  - `src/rewardlab/orchestrator/reward_designer.py`
+  - `src/rewardlab/orchestrator/iteration_engine.py`
+  - `src/rewardlab/orchestrator/session_service.py`
+  - new/updated tests
+  - Result: PASS
+- targeted mypy on:
+  - `src/rewardlab/orchestrator/reward_designer.py`
+  - `src/rewardlab/orchestrator/iteration_engine.py`
+  - `src/rewardlab/orchestrator/session_service.py`
+  - Result: PASS
+- focused pytest:
+  - `tests/unit/test_reward_designer.py`
+  - `tests/integration/test_gymnasium_real_experiment.py`
+  - Result: `10 passed`
+
+### Known Windows Validation Wrinkle
+
+- Broader pytest slices can still fail during teardown with a Windows
+  `basetemp` cleanup permission error.
+- This is an environment/filesystem cleanup issue, not a reward-designer logic
+  failure.
+- The focused reward-designer tests passed.
+
+## Key Code References
+
+- Reward-designer config and mode selection:
+  - `src/rewardlab/orchestrator/reward_designer.py`
+- OpenAI-backed reward generation:
+  - `src/rewardlab/orchestrator/reward_designer.py`
+- Reward iteration plumbing:
+  - `src/rewardlab/orchestrator/iteration_engine.py`
+- Actual-backend integration and pause-on-design-failure behavior:
+  - `src/rewardlab/orchestrator/session_service.py`
+- Humanoid PPO evaluation:
+  - `src/rewardlab/experiments/gymnasium_runner.py`
+
+## Active Docs Updated
+
 - `README.md`
 - `specs/003-real-experiment-readiness/quickstart.md`
-- `specs/003-real-experiment-readiness/tasks.md`
 - `specs/003-real-experiment-readiness/verification-report.md`
+- `specs/003-real-experiment-readiness/tasks.md`
 
-## Validation Completed In This Worktree
+These now explain that real backend execution and real reward iteration are
+separate toggles.
 
-Focused US2 lint:
+## Remaining Blocker
 
-```powershell
-.\.venv\Scripts\python.exe -m ruff check `
-  src/rewardlab/experiments/artifacts.py `
-  src/rewardlab/experiments/robustness_runner.py `
-  src/rewardlab/feedback/human_feedback_service.py `
-  src/rewardlab/feedback/peer_feedback_client.py `
-  src/rewardlab/orchestrator/reporting.py `
-  src/rewardlab/orchestrator/session_service.py `
-  src/rewardlab/schemas/robustness_assessment.py `
-  src/rewardlab/selection/risk_analyzer.py `
-  tests/unit/test_real_execution_foundations.py `
-  tests/integration/test_reward_hack_probes.py `
-  tests/integration/test_real_robustness_pipeline.py `
-  tests/integration/test_real_demo_artifacts.py
-```
+The repo is now ready for a true token-consuming reward search, but that run has
+not happened yet.
 
-Result:
+Blocked pending explicit user approval for paid API usage:
 
-- PASS
+- use `OPENAI_API_KEY`
+- enable `REWARDLAB_REWARD_DESIGN_MODE=openai`
 
-Focused US2 pytest:
+Do not start the paid run until the user explicitly approves using the key.
+
+## Recommended Next Step
+
+Run a real multi-iteration Humanoid search with both real execution and real
+reward generation enabled.
+
+### Recommended Environment Variables
 
 ```powershell
-Remove-Item -Recurse -Force .tmp\pytest-us2 -ErrorAction SilentlyContinue
-$env:TMP=(Resolve-Path .tmp).Path
-$env:TEMP=$env:TMP
-$env:TMPDIR=$env:TMP
-.\.venv\Scripts\python.exe -m pytest `
-  tests/unit/test_real_execution_foundations.py `
-  tests/integration/test_reward_hack_probes.py `
-  tests/integration/test_real_robustness_pipeline.py `
-  tests/integration/test_real_demo_artifacts.py `
-  -q --basetemp .tmp\pytest-us2 -p no:cacheprovider
+$env:REWARDLAB_EXECUTION_MODE = "actual_backend"
+$env:REWARDLAB_REWARD_DESIGN_MODE = "openai"
+$env:REWARDLAB_REWARD_DESIGN_MODEL = "gpt-5-mini"
+$env:REWARDLAB_REWARD_DESIGN_REASONING_EFFORT = "medium"
+$env:REWARDLAB_REWARD_DESIGN_MAX_TOKENS = "2000"
+$env:REWARDLAB_PPO_TOTAL_TIMESTEPS = "50000"
+$env:REWARDLAB_PPO_EVAL_RUNS = "5"
+$env:REWARDLAB_PPO_CHECKPOINT_COUNT = "10"
 ```
 
-Result:
-
-- `11 passed`
-
-Focused US3 pytest:
+### Suggested Start Command
 
 ```powershell
-Remove-Item -Recurse -Force .tmp\pytest-us3 -ErrorAction SilentlyContinue
-$env:TMP=(Resolve-Path .tmp).Path
-$env:TEMP=$env:TMP
-$env:TMPDIR=$env:TMP
-.\.venv\Scripts\python.exe -m pytest `
-  tests/contract/test_backend_adapters.py `
-  tests/contract/test_isaacgym_backend_runtime.py `
-  tests/integration/test_isaac_real_experiment.py `
-  tests/e2e/test_isaac_actual_experiment.py `
-  -q --basetemp .tmp\pytest-us3 -p no:cacheprovider
+.\.venv\Scripts\rewardlab.exe session start `
+  --objective-file tools/fixtures/objectives/humanoid_run.txt `
+  --baseline-reward-file tools/fixtures/rewards/humanoid_baseline.py `
+  --environment-id Humanoid-v4 `
+  --environment-backend gymnasium `
+  --no-improve-limit 3 `
+  --max-iterations 5 `
+  --feedback-gate none `
+  --json
 ```
 
-Result:
-
-- `8 passed, 1 skipped`
-
-Shared real-path regression:
+Then run:
 
 ```powershell
-Remove-Item -Recurse -Force .tmp\pytest-regression-real -ErrorAction SilentlyContinue
-$env:TMP=(Resolve-Path .tmp).Path
-$env:TEMP=$env:TMP
-$env:TMPDIR=$env:TMP
-.\.venv\Scripts\python.exe -m pytest `
-  tests/unit/test_real_execution_foundations.py `
-  tests/integration/test_reward_hack_probes.py `
-  tests/integration/test_real_robustness_pipeline.py `
-  tests/integration/test_real_demo_artifacts.py `
-  tests/contract/test_gymnasium_backend_runtime.py `
-  tests/integration/test_gymnasium_real_experiment.py `
-  tests/e2e/test_gymnasium_actual_experiment.py `
-  -q --basetemp .tmp\pytest-regression-real -p no:cacheprovider
+.\.venv\Scripts\rewardlab.exe session step --session-id <SESSION_ID> --json
 ```
 
-Result:
-
-- `15 passed, 1 skipped`
-
-Wrapper and full validation:
+Repeat `session step` until the session completes or pauses. Afterward:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File tools\quality\run_full_validation.ps1
-powershell -ExecutionPolicy Bypass -File tools\quality\run_real_backend_smokes.ps1
+.\.venv\Scripts\rewardlab.exe session stop --session-id <SESSION_ID> --json
 ```
 
-Results:
+## Expected Comparison Target
 
-- `run_full_validation.ps1`: `63 passed, 2 skipped`
-- `run_real_backend_smokes.ps1`: Gymnasium smoke `1 passed`
+The first real token-consuming Humanoid search should be compared against the
+current real PPO baseline:
 
-## Current Objective
+- `fitness_metric_mean = 0.482898`
 
-The remaining backlog is now:
+## If The Next Run Pauses
 
-- `T032`: run the approval-gated real Isaac smoke and record evidence
-- `T033`: dead-code cleanup and removal of superseded MVP-only branches
-- `T034`: final handoff and checklist refresh
+Check session metadata and events for:
 
-## Remaining Approval-Gated Work
+- `last_failed_design_error`
+- `session.paused` event payload
 
-- `torch` and Isaac runtime packages are still not installed inside `.venv\`
-- Real Isaac smoke evidence still needs user approval for runtime install
-- The new Isaac CLI/test path expects:
-  - `REWARDLAB_ISAAC_ENV_FACTORY`
-  - optional `REWARDLAB_ISAAC_ENV_VALIDATOR`
-  - `REWARDLAB_TEST_ISAAC_ENV_ID`
-- Any git commit still needs user approval
+Common causes will be:
 
-## Recommended Next Steps
+- missing `OPENAI_API_KEY`
+- invalid JSON from the model
+- invalid reward code
+- unsupported callable parameters introduced by the model
 
-1. If the user does not approve installs yet, tackle `T033` by pruning any
-   clearly superseded MVP-only execution branches that are no longer used.
-2. If the user approves the next runtime step, install the approved Isaac
-   runtime inside `.venv\`, set `REWARDLAB_ISAAC_ENV_FACTORY` plus
-   `REWARDLAB_TEST_ISAAC_ENV_ID`, and run:
+## Do Not Forget
 
-   ```powershell
-   powershell -ExecutionPolicy Bypass -File tools\quality\run_real_backend_smokes.ps1 `
-     -IsaacGym `
-     -IsaacFactory "<module.submodule:callable>" `
-     -IsaacEnvId "<APPROVED_ISAAC_ENV>"
-   ```
-
-3. Record the real Isaac smoke evidence in
-   `specs/003-real-experiment-readiness/verification-report.md`.
-4. Refresh `specs/003-real-experiment-readiness/checklists/requirements.md`
-   and this handoff for final completion status.
-5. Ask for approval before creating any checkpoint or final commit.
+- Do not use machine-level installs.
+- Do not assume the presence of credentials is permission to spend money.
+- Keep all artifacts inside this worktree.
+- The next meaningful milestone is not another fixed-reward PPO run; it is a
+  real multi-iteration Humanoid reward search using the OpenAI-backed designer.

@@ -23,7 +23,7 @@
     },
     "environment_backend": {
       "type": "string",
-      "enum": ["gymnasium", "isaacgym"]
+      "enum": ["gymnasium"]
     },
     "no_improve_limit": {
       "type": "integer",

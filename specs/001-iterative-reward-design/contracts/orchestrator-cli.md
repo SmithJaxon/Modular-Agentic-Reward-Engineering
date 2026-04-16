@@ -15,7 +15,7 @@ Required arguments:
 - `--objective-file <path>`
 - `--baseline-reward-file <path>`
 - `--environment-id <id>`
-- `--environment-backend <gymnasium|isaacgym>`
+- `--environment-backend <gymnasium>`
 - `--no-improve-limit <int>`
 - `--max-iterations <int>`
 - `--feedback-gate <none|one_required|both_required>`

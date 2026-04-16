@@ -8,7 +8,7 @@ Fields:
 - `session_id` (string, unique, immutable)
 - `objective_text` (string, required)
 - `environment_id` (string, required)
-- `environment_backend` (enum: gymnasium, isaacgym)
+- `environment_backend` (enum: gymnasium)
 - `status` (enum: draft, running, paused, interrupted, completed, failed)
 - `no_improve_limit` (integer, required, >0)
 - `max_iterations` (integer, required, >0)

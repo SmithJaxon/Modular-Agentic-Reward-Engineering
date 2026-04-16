@@ -12,7 +12,19 @@ from pathlib import Path
 import pytest
 
 from rewardlab.experiments.backends.gymnasium_backend import GymnasiumBackend
-from rewardlab.experiments.gymnasium_runner import GymnasiumExperimentRunner
+from rewardlab.experiments.execution_service import ExecutionError, ExecutionRequest
+from rewardlab.experiments.gymnasium_runner import (
+    GymnasiumExperimentRunner,
+    HumanoidPpoEvaluationConfig,
+)
+from rewardlab.experiments.reward_program import load_reward_program
+from rewardlab.llm.openai_client import ChatCompletionRequest, ChatCompletionResponse
+from rewardlab.orchestrator.iteration_engine import IterationEngine
+from rewardlab.orchestrator.reward_designer import (
+    OpenAIRewardDesigner,
+    RewardDesignConfig,
+    RewardDesignerMode,
+)
 from rewardlab.orchestrator.session_service import ServicePaths, SessionService
 from rewardlab.schemas.experiment_run import ExecutionMode, RunStatus
 from rewardlab.schemas.session_config import EnvironmentBackend, FeedbackGate, SessionStatus
@@ -66,6 +78,107 @@ class FakeGymnasiumEnvironment:
         """Track environment closure for cleanup assertions."""
 
         self.closed = True
+
+
+class FakeContinuousActionSpace:
+    """Minimal continuous action-space double for fake Humanoid environments."""
+
+    shape = (17,)
+
+
+class TrainerState:
+    """Mutable shared trainer state for fake PPO evaluation tests."""
+
+    def __init__(self, run_index: int) -> None:
+        """Store the run index and mutable checkpoint counter."""
+
+        self.run_index = run_index
+        self.checkpoint_index = 0
+
+
+class FakeHumanoidEnvironment:
+    """One-step Humanoid-like environment for PPO protocol tests."""
+
+    action_space = FakeContinuousActionSpace()
+
+    def __init__(self, state: TrainerState) -> None:
+        """Store the shared state used to report checkpoint progress."""
+
+        self.state = state
+        self.closed = False
+
+    def reset(self, *, seed: int | None = None) -> tuple[list[float], dict[str, int | None]]:
+        """Return a stable observation vector for both training and evaluation."""
+
+        return [0.0, 0.0, 0.0, 0.0], {"seed": seed}
+
+    def step(self, action: list[float]) -> tuple[list[float], float, bool, bool, dict[str, float]]:
+        """Terminate immediately and expose a deterministic x_velocity metric."""
+
+        del action
+        metric = float(self.state.run_index + self.state.checkpoint_index)
+        return [0.0, 0.0, 0.0, 0.0], metric, True, False, {"x_velocity": metric}
+
+    def close(self) -> None:
+        """Track environment closure for cleanup assertions."""
+
+        self.closed = True
+
+
+class FakeHumanoidEnvironmentFactory:
+    """Create training and evaluation environments that share per-run state."""
+
+    def __init__(self) -> None:
+        """Initialize the pair-tracking state machine."""
+
+        self._shared_state: TrainerState | None = None
+        self._calls_in_pair = 0
+        self._run_index = 0
+
+    def __call__(
+        self,
+        *,
+        environment_id: str,
+        seed: int | None = None,
+        render_mode: str | None = None,
+    ) -> FakeHumanoidEnvironment:
+        """Return paired environments with the same shared trainer state."""
+
+        del environment_id, seed, render_mode
+        if self._shared_state is None or self._calls_in_pair >= 2:
+            self._shared_state = TrainerState(run_index=self._run_index)
+            self._run_index += 1
+            self._calls_in_pair = 0
+        self._calls_in_pair += 1
+        return FakeHumanoidEnvironment(self._shared_state)
+
+
+class FakeTrainer:
+    """Minimal PPO trainer double with deterministic checkpoint progress."""
+
+    def __init__(self, state: TrainerState) -> None:
+        """Store the shared state used by the fake evaluation environments."""
+
+        self.state = state
+
+    def learn(
+        self,
+        total_timesteps: int,
+        *,
+        progress_bar: bool = False,
+        reset_num_timesteps: bool = True,
+    ) -> FakeTrainer:
+        """Advance the checkpoint counter once per training slice."""
+
+        del total_timesteps, progress_bar, reset_num_timesteps
+        self.state.checkpoint_index += 1
+        return self
+
+    def predict(self, observation, deterministic: bool = True) -> tuple[list[float], None]:
+        """Return a zero action compatible with the fake Humanoid action space."""
+
+        del observation, deterministic
+        return [0.0] * 17, None
 
 
 def build_actual_service(root: Path) -> SessionService:
@@ -193,3 +306,242 @@ def test_actual_gymnasium_failure_pauses_session_with_persisted_failed_run(
     assert len(runs) == 1
     assert runs[0].status == RunStatus.FAILED
     assert runs[0].failure_reason is not None
+
+
+def test_humanoid_ppo_protocol_reports_paper_style_checkpoint_metrics() -> None:
+    """Humanoid execution should aggregate the best checkpoint metric across PPO runs."""
+
+    environment_factory = FakeHumanoidEnvironmentFactory()
+    backend = GymnasiumBackend(
+        environment_factory=environment_factory,
+        gym_module=FakeGymModule({"Humanoid-v4"}),
+    )
+    runner = GymnasiumExperimentRunner(
+        backend=backend,
+        humanoid_ppo_config=HumanoidPpoEvaluationConfig(
+            total_timesteps=300,
+            checkpoint_count=3,
+            evaluation_run_count=2,
+            evaluation_episodes_per_checkpoint=1,
+        ),
+        ppo_trainer_factory=lambda environment, seed, config: FakeTrainer(
+            environment.environment.state
+        ),
+    )
+    reward_program = load_reward_program(
+        candidate_id="candidate-humanoid",
+        source_text="def reward(observation, x_velocity):\n    return float(x_velocity)\n",
+    )
+
+    outcome = runner(
+        ExecutionRequest(
+            run_id="run-humanoid",
+            backend=EnvironmentBackend.GYMNASIUM,
+            environment_id="Humanoid-v4",
+            execution_mode=ExecutionMode.ACTUAL_BACKEND,
+            seed=11,
+        ),
+        reward_program,
+    )
+
+    assert outcome.metrics["evaluation_protocol"] == "humanoid_ppo_max_checkpoint_mean_x_velocity"
+    assert outcome.metrics["per_run_best_mean_x_velocity"] == [3.0, 4.0]
+    assert outcome.metrics["fitness_metric_mean"] == pytest.approx(3.5)
+    assert len(outcome.event_trace or []) == 6
+
+
+def test_humanoid_ppo_protocol_reports_missing_sb3_prerequisite(monkeypatch) -> None:
+    """Humanoid PPO should fail with an actionable prerequisite when SB3 is unavailable."""
+
+    backend = GymnasiumBackend(
+        environment_factory=lambda **_: FakeHumanoidEnvironment(TrainerState(run_index=0)),
+        gym_module=FakeGymModule({"Humanoid-v4"}),
+    )
+    runner = GymnasiumExperimentRunner(backend=backend)
+    reward_program = load_reward_program(
+        candidate_id="candidate-humanoid",
+        source_text="def reward(observation, x_velocity):\n    return float(x_velocity)\n",
+    )
+
+    monkeypatch.setattr(
+        "rewardlab.experiments.gymnasium_runner._default_ppo_trainer_factory",
+        lambda: None,
+    )
+
+    with pytest.raises(ExecutionError, match="stable_baselines3"):
+        runner(
+            ExecutionRequest(
+                run_id="run-humanoid-missing-ppo",
+                backend=EnvironmentBackend.GYMNASIUM,
+                environment_id="Humanoid-v4",
+                execution_mode=ExecutionMode.ACTUAL_BACKEND,
+            ),
+            reward_program,
+        )
+
+
+def test_actual_gymnasium_step_uses_model_backed_reward_designer(
+    workspace_tmp_path: Path,
+) -> None:
+    """Actual backend stepping should use the model-backed designer when configured."""
+
+    captured_request: ChatCompletionRequest | None = None
+    generated_reward = (
+        "def reward(state, env_reward, terminated):\n"
+        "    if terminated:\n"
+        "        return -5.0\n"
+        "    return float(env_reward + 0.25)\n"
+    )
+
+    class FakeOpenAIClient:
+        """Capture the outgoing reward-design request and return valid reward code."""
+
+        has_credentials = True
+
+        def chat_completion(
+            self,
+            request: ChatCompletionRequest,
+        ) -> ChatCompletionResponse:
+            """Return a stable JSON payload for one reward-design iteration."""
+
+            nonlocal captured_request
+            captured_request = request
+            return ChatCompletionResponse(
+                content=(
+                    '{"reward_definition": '
+                    '"def reward(state, env_reward, terminated):\\n    if terminated:\\n'
+                    '        return -5.0\\n    return float(env_reward + 0.25)\\n", '
+                    '"change_summary": "Use environment reward directly with a small bonus.", '
+                    '"proposed_changes": ["Increase the shaped reward by a constant margin."]}'
+                ),
+                raw_response=None,
+            )
+
+    backend = GymnasiumBackend(
+        environment_factory=lambda **_: FakeGymnasiumEnvironment(),
+        gym_module=FakeGymModule({"CartPole-v1"}),
+    )
+    paths = ServicePaths(
+        data_dir=workspace_tmp_path / ".rewardlab",
+        database_path=workspace_tmp_path / ".rewardlab" / "metadata.sqlite3",
+        event_log_dir=workspace_tmp_path / ".rewardlab" / "events",
+        checkpoint_dir=workspace_tmp_path / ".rewardlab" / "checkpoints",
+        report_dir=workspace_tmp_path / ".rewardlab" / "reports",
+    )
+    service = SessionService(
+        paths=paths,
+        gymnasium_runner=GymnasiumExperimentRunner(backend=backend, default_max_episode_steps=5),
+        iteration_engine=IterationEngine(
+            reward_designer=OpenAIRewardDesigner(
+                openai_client=FakeOpenAIClient(),
+                config=RewardDesignConfig(
+                    mode=RewardDesignerMode.OPENAI,
+                    model="gpt-5-nano",
+                    reasoning_effort="low",
+                    max_tokens=700,
+                ),
+            )
+        ),
+        execution_mode=ExecutionMode.ACTUAL_BACKEND,
+    )
+    service.initialize()
+    objective_file, baseline_reward_file = create_input_files(workspace_tmp_path)
+    started = service.start_session(
+        objective_file=objective_file,
+        baseline_reward_file=baseline_reward_file,
+        environment_id="CartPole-v1",
+        environment_backend=EnvironmentBackend.GYMNASIUM,
+        no_improve_limit=3,
+        max_iterations=5,
+        feedback_gate=FeedbackGate.NONE,
+        session_id="session-actual-gym-openai",
+    )
+
+    stepped = service.step_session(started.session_id)
+    candidates = service.list_candidates(started.session_id)
+    session = service.get_session(started.session_id)
+
+    assert captured_request is not None
+    assert captured_request.model == "gpt-5-nano"
+    assert "Reward stable balance" in captured_request.messages[1].content
+    assert candidates[-1].candidate_id == stepped.candidate_id
+    assert candidates[-1].reward_definition == generated_reward.strip()
+    assert session is not None
+    assert session.metadata["reward_designer_mode"] == "openai"
+    assert session.metadata["reward_designer_model"] == "gpt-5-nano"
+
+
+def test_actual_gymnasium_design_failure_pauses_before_execution(
+    workspace_tmp_path: Path,
+) -> None:
+    """A reward-design failure should pause the session before execution starts."""
+
+    class FakeOpenAIClient:
+        """Return invalid callable parameters so candidate generation fails."""
+
+        has_credentials = True
+
+        def chat_completion(
+            self,
+            request: ChatCompletionRequest,
+        ) -> ChatCompletionResponse:
+            """Return an invalid reward signature for failure-path coverage."""
+
+            del request
+            return ChatCompletionResponse(
+                content=(
+                    '{"reward_definition": '
+                    '"def reward(forbidden_signal):\\n    return 1.0\\n", '
+                    '"change_summary": "Invalid reward.", '
+                    '"proposed_changes": ["Use a forbidden signal."]}'
+                ),
+                raw_response=None,
+            )
+
+    backend = GymnasiumBackend(
+        environment_factory=lambda **_: FakeGymnasiumEnvironment(),
+        gym_module=FakeGymModule({"CartPole-v1"}),
+    )
+    paths = ServicePaths(
+        data_dir=workspace_tmp_path / ".rewardlab",
+        database_path=workspace_tmp_path / ".rewardlab" / "metadata.sqlite3",
+        event_log_dir=workspace_tmp_path / ".rewardlab" / "events",
+        checkpoint_dir=workspace_tmp_path / ".rewardlab" / "checkpoints",
+        report_dir=workspace_tmp_path / ".rewardlab" / "reports",
+    )
+    service = SessionService(
+        paths=paths,
+        gymnasium_runner=GymnasiumExperimentRunner(backend=backend, default_max_episode_steps=5),
+        iteration_engine=IterationEngine(
+            reward_designer=OpenAIRewardDesigner(
+                openai_client=FakeOpenAIClient(),
+                config=RewardDesignConfig(mode=RewardDesignerMode.OPENAI),
+            )
+        ),
+        execution_mode=ExecutionMode.ACTUAL_BACKEND,
+    )
+    service.initialize()
+    objective_file, baseline_reward_file = create_input_files(workspace_tmp_path)
+    started = service.start_session(
+        objective_file=objective_file,
+        baseline_reward_file=baseline_reward_file,
+        environment_id="CartPole-v1",
+        environment_backend=EnvironmentBackend.GYMNASIUM,
+        no_improve_limit=3,
+        max_iterations=5,
+        feedback_gate=FeedbackGate.NONE,
+        session_id="session-actual-gym-openai-failure",
+    )
+
+    with pytest.raises(RuntimeError, match="unsupported callable parameters"):
+        service.step_session(started.session_id)
+
+    session = service.get_session(started.session_id)
+    runs = service.list_experiment_runs(session_id=started.session_id)
+
+    assert session is not None
+    assert session.status == SessionStatus.PAUSED
+    assert session.metadata["last_failed_design_error"].startswith(
+        "reward designer introduced unsupported callable parameters"
+    )
+    assert runs == []

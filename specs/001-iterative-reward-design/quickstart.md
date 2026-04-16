@@ -139,9 +139,8 @@ Expected result:
 - Real Gymnasium execution uses the same CLI commands once
   `REWARDLAB_EXECUTION_MODE=actual_backend` is set and approved dependencies are
   installed in `.venv`.
-- `isaacgym` routing is implemented and covered by contract/integration tests.
-- For manual `isaacgym` runs, supply your own objective and reward files plus a
-  valid environment identifier available in your local backend setup.
+- Historical note: earlier planning mentioned `isaacgym`, but the active
+  worktree runtime is now Gymnasium-only.
 
 ## 8. Quality Feedback Loop Before Merge
 

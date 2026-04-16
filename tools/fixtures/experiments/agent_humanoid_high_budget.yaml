@@ -1,0 +1,78 @@
+version: 1
+experiment_name: humanoid_agent_high_budget
+objective: >
+  Aggressively optimize Humanoid forward speed while retaining basic stability.
+  Allow broader exploration and larger model outputs before giving up.
+
+environment:
+  backend: gymnasium
+  id: Humanoid-v4
+  seed: 7
+
+baseline_reward:
+  mode: file
+  path: tools/fixtures/rewards/humanoid_baseline.py
+  entrypoint_name: reward
+
+models:
+  controller:
+    model: gpt-5-mini
+    reasoning_effort: high
+    max_completion_tokens: 128000
+  reward_designer:
+    model: gpt-5-mini
+    reasoning_effort: high
+    max_completion_tokens: 128000
+  analyzer:
+    model: gpt-5-mini
+    reasoning_effort: medium
+    max_completion_tokens: 16000
+
+budgets:
+  api:
+    max_total_tokens: 750000
+    max_total_usd: 40.0
+    max_completion_tokens_per_call: 128000
+  time:
+    max_wall_clock_minutes: 480
+  compute:
+    max_experiments: 20
+    max_total_train_timesteps: 1200000
+    max_parallel_experiments: 2
+
+governance:
+  stopping:
+    max_iterations: 14
+    plateau_window: 4
+    min_relative_improvement: 0.01
+    max_no_improve_streak: 5
+    max_failed_actions: 5
+  human_feedback:
+    allow: true
+    feedback_gate: one_required
+    max_requests: 4
+
+tool_policy:
+  allowed_tools:
+    - run_experiment
+    - summarize_run_artifacts
+    - propose_reward_revision
+    - validate_reward_program
+    - compare_candidates
+    - estimate_cost_and_risk
+    - stop_or_continue_recommendation
+    - request_human_feedback
+  default_timeout_seconds: 5400
+  max_retries_per_tool: 3
+
+execution:
+  ppo:
+    total_timesteps: 50000
+    eval_runs: 5
+    checkpoint_count: 10
+    eval_episodes_per_checkpoint: 1
+
+outputs:
+  runtime_dir: .rewardlab
+  report_detail: full
+  save_decision_trace: true

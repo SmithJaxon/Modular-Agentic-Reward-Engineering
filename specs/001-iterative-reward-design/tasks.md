@@ -97,18 +97,18 @@ headers, function/method headers, and dead-code cleanup.
 
 **Goal**: Add cross-backend robustness experiments and explicit reward-hacking risk analysis.
 
-**Independent Test**: Run robustness probes on both `gymnasium` and `isaacgym` backends and verify risk flags and selection rationale.
+**Independent Test**: Run robustness probes on the `gymnasium` backend and verify risk flags and selection rationale.
 
 ### Tests for User Story 2
 
-- [x] T033 [P] [US2] Add backend adapter contract tests for Gymnasium and Isaac Gym in `tests/contract/test_backend_adapters.py`
+- [x] T033 [P] [US2] Add backend adapter contract tests for Gymnasium in `tests/contract/test_backend_adapters.py`
 - [x] T034 [P] [US2] Add integration tests for reward-hacking probe matrix in `tests/integration/test_reward_hack_probes.py`
 - [x] T035 [P] [US2] Add integration test for `environment_backend` routing in `tests/integration/test_backend_selection.py`
 
 ### Implementation for User Story 2
 
 - [x] T036 [P] [US2] Implement Gymnasium backend adapter in `src/rewardlab/experiments/backends/gymnasium_backend.py`
-- [x] T037 [P] [US2] Implement Isaac Gym backend adapter in `src/rewardlab/experiments/backends/isaacgym_backend.py`
+- [x] T037 [P] [US2] Historical dual-backend task removed from the active worktree runtime scope
 - [x] T038 [US2] Implement backend adapter factory and resolver in `src/rewardlab/experiments/backends/factory.py`
 - [x] T039 [P] [US2] Implement experiment run schema in `src/rewardlab/schemas/experiment_run.py`
 - [x] T040 [US2] Implement robustness experiment runner with architecture/hyperparameter variants in `src/rewardlab/experiments/robustness_runner.py`
@@ -221,7 +221,7 @@ Task: "T035 [US2] tests/integration/test_backend_selection.py"
 
 # Implement backend adapters in parallel:
 Task: "T036 [US2] src/rewardlab/experiments/backends/gymnasium_backend.py"
-Task: "T037 [US2] src/rewardlab/experiments/backends/isaacgym_backend.py"
+Task: "T037 [US2] historical dual-backend task"
 ```
 
 ## Parallel Example: User Story 3

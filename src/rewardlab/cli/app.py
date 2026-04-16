@@ -8,10 +8,12 @@ from __future__ import annotations
 
 import typer
 
+from rewardlab.cli.experiment_commands import experiment_app
 from rewardlab.cli.feedback_commands import feedback_app
 from rewardlab.cli.session_commands import session_app
 
 app = typer.Typer(help="RewardLab command-line interface.")
+app.add_typer(experiment_app, name="experiment")
 app.add_typer(feedback_app, name="feedback")
 app.add_typer(session_app, name="session")
 

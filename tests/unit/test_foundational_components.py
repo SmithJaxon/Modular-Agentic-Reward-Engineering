@@ -361,6 +361,35 @@ def test_peer_feedback_client_uses_fallback_when_live_response_is_blank() -> Non
     assert feedback.score == 0.85
 
 
+def test_peer_feedback_client_uses_fallback_when_live_request_raises() -> None:
+    """A live client failure should degrade to the deterministic peer fallback."""
+
+    class RaisingOpenAIClient:
+        """Fake model client that raises during the live request."""
+
+        has_credentials = True
+
+        def chat_completion(
+            self,
+            request: ChatCompletionRequest,
+        ) -> ChatCompletionResponse:
+            """Raise a deterministic runtime failure for fallback coverage."""
+
+            assert request.reasoning_effort == "minimal"
+            raise RuntimeError("network disabled")
+
+    feedback = PeerFeedbackClient(RaisingOpenAIClient()).request_feedback(
+        session_id="session-live-error",
+        candidate_id="candidate-001",
+        objective_text="Reward stable, centered balance.",
+        reward_definition="def reward(state): return 1.0",
+        aggregate_score=1.2,
+    )
+
+    assert feedback.comment == FALLBACK_PEER_COMMENT
+    assert feedback.score == 0.85
+
+
 def test_default_session_id_is_unique_between_calls() -> None:
     """Automatically generated session identifiers should not collide in fast succession."""
 

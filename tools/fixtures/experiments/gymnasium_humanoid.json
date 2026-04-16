@@ -1,0 +1,14 @@
+{
+  "objective_file": "tools/fixtures/objectives/humanoid_run.txt",
+  "baseline_reward_file": "tools/fixtures/rewards/humanoid_baseline.py",
+  "environment_backend": "gymnasium",
+  "environment_id": "Humanoid-v4",
+  "no_improve_limit": 2,
+  "max_iterations": 2,
+  "feedback_gate": "none",
+  "notes": [
+    "Humanoid actual-backend runs use the PPO evaluation protocol in gymnasium_runner.py.",
+    "The final score is the average of the best checkpoint mean x-velocity across 5 PPO runs.",
+    "Install stable-baselines3 inside .venv before using this fixture in actual_backend mode."
+  ]
+}

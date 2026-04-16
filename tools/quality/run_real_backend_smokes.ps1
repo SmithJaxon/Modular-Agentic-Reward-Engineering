@@ -5,11 +5,7 @@ Last Updated: 2026-04-02
 #>
 
 param(
-    [switch]$Gymnasium,
-    [switch]$IsaacGym,
-    [string]$IsaacEnvId,
-    [string]$IsaacFactory,
-    [string]$IsaacValidator
+    [switch]$Gymnasium
 )
 
 $ErrorActionPreference = "Stop"
@@ -22,7 +18,7 @@ if (-not (Test-Path $python)) {
     throw "Expected local interpreter at $python. Create the worktree-local .venv first."
 }
 
-if (-not $Gymnasium -and -not $IsaacGym) {
+if (-not $Gymnasium) {
     $Gymnasium = $true
 }
 
@@ -63,43 +59,6 @@ try {
         )
     }
 
-    if ($IsaacGym) {
-        if (-not $IsaacFactory) {
-            $IsaacFactory = $env:REWARDLAB_ISAAC_ENV_FACTORY
-        }
-        if (-not $IsaacValidator) {
-            $IsaacValidator = $env:REWARDLAB_ISAAC_ENV_VALIDATOR
-        }
-        if (-not $IsaacEnvId) {
-            $IsaacEnvId = $env:REWARDLAB_TEST_ISAAC_ENV_ID
-        }
-        if (-not $IsaacFactory) {
-            throw "Set -IsaacFactory or REWARDLAB_ISAAC_ENV_FACTORY before Isaac smoke."
-        }
-        if (-not $IsaacEnvId) {
-            throw "Set -IsaacEnvId or REWARDLAB_TEST_ISAAC_ENV_ID before Isaac smoke."
-        }
-
-        $env:REWARDLAB_ISAAC_ENV_FACTORY = $IsaacFactory
-        $env:REWARDLAB_TEST_ISAAC_ENV_ID = $IsaacEnvId
-        if ($IsaacValidator) {
-            $env:REWARDLAB_ISAAC_ENV_VALIDATOR = $IsaacValidator
-        }
-
-        $isaacBaseTemp = Join-Path $tmpRoot "pytest-real-isaacgym"
-        Remove-Item -Recurse -Force $isaacBaseTemp -ErrorAction SilentlyContinue
-        Invoke-CheckedPython "Run real Isaac smoke" @(
-            "-m",
-            "pytest",
-            "tests\e2e\test_isaac_actual_experiment.py",
-            "-q",
-            "--run-real-isaacgym",
-            "--basetemp",
-            $isaacBaseTemp,
-            "-p",
-            "no:cacheprovider"
-        )
-    }
 }
 finally {
     Pop-Location

@@ -10,9 +10,16 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from rewardlab.orchestrator.reward_designer import (
+    DeterministicRewardDesigner,
+    RewardDesigner,
+    RewardDesignRequest,
+)
+from rewardlab.schemas.experiment_run import ExperimentRun
 from rewardlab.schemas.feedback_entry import FeedbackEntry
 from rewardlab.schemas.reflection_record import ReflectionRecord
 from rewardlab.schemas.reward_candidate import RewardCandidate
+from rewardlab.schemas.session_config import EnvironmentBackend
 
 TOKEN_PATTERN = re.compile(r"[a-zA-Z0-9_]+")
 
@@ -38,6 +45,11 @@ class PlannedIteration:
 class IterationEngine:
     """Produce offline-safe reward revisions for the deterministic session loop."""
 
+    def __init__(self, *, reward_designer: RewardDesigner | None = None) -> None:
+        """Store the candidate-generation strategy used by the iteration loop."""
+
+        self.reward_designer = reward_designer or DeterministicRewardDesigner()
+
     def evaluate_candidate(
         self,
         *,
@@ -59,14 +71,22 @@ class IterationEngine:
         *,
         session_id: str,
         objective_text: str,
+        environment_id: str,
+        environment_backend: EnvironmentBackend,
         current_candidate: RewardCandidate,
+        latest_reflection: ReflectionRecord | None = None,
+        latest_run: ExperimentRun | None = None,
     ) -> IterationArtifacts:
         """Generate reflection and revised candidate artifacts for one iteration."""
 
         planned_iteration = self.plan_iteration(
             session_id=session_id,
             objective_text=objective_text,
+            environment_id=environment_id,
+            environment_backend=environment_backend,
             current_candidate=current_candidate,
+            latest_reflection=latest_reflection,
+            latest_run=latest_run,
         )
         next_iteration_index = planned_iteration.candidate.iteration_index
         reflection = ReflectionRecord(
@@ -100,35 +120,43 @@ class IterationEngine:
         *,
         session_id: str,
         objective_text: str,
+        environment_id: str,
+        environment_backend: EnvironmentBackend,
         current_candidate: RewardCandidate,
+        latest_reflection: ReflectionRecord | None = None,
+        latest_run: ExperimentRun | None = None,
+        allowed_parameter_names: tuple[str, ...] = (),
     ) -> PlannedIteration:
         """Prepare the next revised candidate and its deterministic run identifier."""
 
         next_iteration_index = current_candidate.iteration_index + 1
         run_id = f"{session_id}-run-{next_iteration_index:03d}"
-        proposed_changes = [
-            "Increase reward emphasis on smooth, centered behavior.",
-            "Add clearer stability incentives aligned with the objective.",
-        ]
-        revised_reward_definition = _revise_reward_definition(
-            current_candidate.reward_definition,
-            objective_text=objective_text,
-            proposed_changes=proposed_changes,
-            iteration_index=next_iteration_index,
+        design_result = self.reward_designer.design_next_candidate(
+            RewardDesignRequest(
+                session_id=session_id,
+                objective_text=objective_text,
+                environment_id=environment_id,
+                environment_backend=environment_backend,
+                current_candidate=current_candidate,
+                next_iteration_index=next_iteration_index,
+                latest_reflection=latest_reflection,
+                latest_run=latest_run,
+                allowed_parameter_names=allowed_parameter_names,
+            )
         )
         revised_candidate = RewardCandidate(
             candidate_id=f"{session_id}-candidate-{next_iteration_index:03d}",
             session_id=session_id,
             parent_candidate_id=current_candidate.candidate_id,
             iteration_index=next_iteration_index,
-            reward_definition=revised_reward_definition,
-            change_summary="Revision generated from deterministic reflection feedback.",
+            reward_definition=design_result.reward_definition,
+            change_summary=design_result.change_summary,
             aggregate_score=None,
         )
         return PlannedIteration(
             candidate=revised_candidate,
             run_id=run_id,
-            proposed_changes=proposed_changes,
+            proposed_changes=design_result.proposed_changes,
         )
 
     def build_execution_reflection(
@@ -162,25 +190,6 @@ def _tokenize(text: str) -> list[str]:
     """Tokenize text into normalized alphanumeric terms."""
 
     return [token.lower() for token in TOKEN_PATTERN.findall(text)]
-
-
-def _revise_reward_definition(
-    current_definition: str,
-    *,
-    objective_text: str,
-    proposed_changes: list[str],
-    iteration_index: int,
-) -> str:
-    """Return a revised reward definition with deterministic improvement notes."""
-
-    objective_terms = ", ".join(sorted(set(_tokenize(objective_text)))[:6])
-    change_block = "\n".join(f"# - {change}" for change in proposed_changes)
-    return (
-        f"{current_definition.rstrip()}\n\n"
-        f"# Iteration {iteration_index} refinement\n"
-        f"# Objective terms: {objective_terms}\n"
-        f"{change_block}\n"
-    )
 
 
 def build_iteration_summary(

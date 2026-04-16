@@ -30,12 +30,6 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         default=False,
         help="run tests marked real_gymnasium against the approved worktree-local .venv",
     )
-    parser.addoption(
-        "--run-real-isaacgym",
-        action="store_true",
-        default=False,
-        help="run tests marked real_isaacgym against the approved worktree-local .venv",
-    )
 
 
 def pytest_configure(config: pytest.Config) -> None:
@@ -44,10 +38,6 @@ def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line(
         "markers",
         "real_gymnasium: requires approved Gymnasium dependencies in the worktree .venv",
-    )
-    config.addinivalue_line(
-        "markers",
-        "real_isaacgym: requires an approved Isaac Gym runtime in the worktree .venv",
     )
 
 
@@ -58,9 +48,7 @@ def pytest_collection_modifyitems(
     """Skip opt-in backend smokes unless the required flag and runtime are present."""
 
     run_real_gymnasium = bool(config.getoption("--run-real-gymnasium"))
-    run_real_isaacgym = bool(config.getoption("--run-real-isaacgym"))
     has_gymnasium = _module_available("gymnasium")
-    has_isaacgym = _module_available("isaacgym")
 
     for item in items:
         if item.get_closest_marker("real_gymnasium") is not None:
@@ -78,24 +66,6 @@ def pytest_collection_modifyitems(
                 item.add_marker(
                     pytest.mark.skip(
                         reason="gymnasium is not installed in the approved worktree-local .venv"
-                    )
-                )
-
-        if item.get_closest_marker("real_isaacgym") is not None:
-            if not run_real_isaacgym:
-                item.add_marker(
-                    pytest.mark.skip(
-                        reason=(
-                            "need --run-real-isaacgym to run real Isaac Gym smokes; "
-                            "default pytest runs keep them skipped"
-                        )
-                    )
-                )
-                continue
-            if not has_isaacgym:
-                item.add_marker(
-                    pytest.mark.skip(
-                        reason="isaacgym is not installed in the approved worktree-local .venv"
                     )
                 )
 

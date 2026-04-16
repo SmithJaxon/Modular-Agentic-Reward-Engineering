@@ -38,10 +38,13 @@ class PeerFeedbackClient:
         """Create a peer feedback entry using a local fallback unless credentials exist."""
 
         if self.openai_client is not None and self.openai_client.has_credentials:
-            comment = self._request_model_feedback(
-                objective_text=objective_text,
-                reward_definition=reward_definition,
-            )
+            try:
+                comment = self._request_model_feedback(
+                    objective_text=objective_text,
+                    reward_definition=reward_definition,
+                )
+            except Exception:
+                comment = FALLBACK_PEER_COMMENT
         else:
             comment = FALLBACK_PEER_COMMENT
 

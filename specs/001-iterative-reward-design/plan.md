@@ -14,13 +14,13 @@ phase can be validated independently before full-session runs.
 ## Technical Context
 
 **Language/Version**: Python 3.12
-**Primary Dependencies**: PyTorch, Gymnasium, Isaac Gym, OpenAI API client, Pydantic, Typer
+**Primary Dependencies**: PyTorch, Gymnasium, OpenAI API client, Pydantic, Typer
 **Storage**: Local artifacts (`JSONL`, `JSON`, rendered media) and lightweight SQLite metadata
 **Testing**: pytest, pytest-xdist, hypothesis, pytest-cov, mypy, ruff
 **Target Platform**: Linux or macOS workstation, optional CUDA GPU
 **Project Type**: Modular Python CLI application for RL experiment orchestration
 **Performance Goals**: Complete a full iteration cycle in <= 120 seconds in local baseline environments; produce interruption-safe best-candidate export in <= 60 seconds
-**Constraints**: API keys only via environment variables, isolated orchestration vs experiment context, resumable paused sessions, bounded retry/backoff, explicit selection rationale logging, backend chosen per session (`gymnasium` or `isaacgym`)
+**Constraints**: API keys only via environment variables, isolated orchestration vs experiment context, resumable paused sessions, bounded retry/backoff, explicit selection rationale logging, backend chosen per session (`gymnasium`)
 **Scale/Scope**: One active optimization session per environment in v1; backend selected per session; iteration limits fully user-provided
 
 ## Constitution Check

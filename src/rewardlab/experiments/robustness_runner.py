@@ -47,9 +47,7 @@ class RobustnessRunner:
         probe_matrix_path: Path,
         experiment_execution_service: ExperimentExecutionService | None = None,
         gymnasium_runner: ExperimentRunner | None = None,
-        isaacgym_runner: ExperimentRunner | None = None,
         gymnasium_backend: BackendAdapter | None = None,
-        isaacgym_backend: BackendAdapter | None = None,
         risk_analyzer: RiskAnalyzer | None = None,
     ) -> None:
         """Store the probe matrix location and backend dependencies."""
@@ -57,9 +55,7 @@ class RobustnessRunner:
         self.probe_matrix_path = probe_matrix_path
         self.experiment_execution_service = experiment_execution_service
         self.gymnasium_runner = gymnasium_runner
-        self.isaacgym_runner = isaacgym_runner
         self.gymnasium_backend = gymnasium_backend
-        self.isaacgym_backend = isaacgym_backend
         self.risk_analyzer = risk_analyzer or RiskAnalyzer()
 
     def run_candidate_probes(
@@ -178,7 +174,6 @@ class RobustnessRunner:
         adapter = resolve_backend(
             environment_backend,
             gymnasium_backend=self.gymnasium_backend,
-            isaacgym_backend=self.isaacgym_backend,
         )
         runs: list[ExperimentRun] = []
         for index, variant in enumerate(variants, start=1):
@@ -221,10 +216,6 @@ class RobustnessRunner:
             if self.gymnasium_runner is None:
                 raise RuntimeError("gymnasium_runner is required for actual robustness probes")
             return self.gymnasium_runner
-        if environment_backend == EnvironmentBackend.ISAACGYM:
-            if self.isaacgym_runner is None:
-                raise RuntimeError("isaacgym_runner is required for actual robustness probes")
-            return self.isaacgym_runner
         raise ValueError(f"unsupported environment backend: {environment_backend.value!r}")
 
 

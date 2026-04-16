@@ -19,7 +19,6 @@ class EnvironmentBackend(StrEnum):
     """Supported environment backend values."""
 
     GYMNASIUM = "gymnasium"
-    ISAACGYM = "isaacgym"
 
 
 class FeedbackGate(StrEnum):

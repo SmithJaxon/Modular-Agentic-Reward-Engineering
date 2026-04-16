@@ -14,7 +14,7 @@ triggered.
 ## Technical Context
 
 **Language/Version**: Python 3.12  
-**Primary Dependencies**: PyTorch, Gymnasium, Isaac Gym, OpenAI API client, Pydantic, Typer  
+**Primary Dependencies**: PyTorch, Gymnasium, OpenAI API client, Pydantic, Typer  
 **Storage**: Local JSONL, JSON, rendered media, lightweight SQLite metadata  
 **Testing**: pytest, targeted contract/integration/e2e coverage, ruff  
 **Target Platform**: Local Windows worktree driven from PowerShell  

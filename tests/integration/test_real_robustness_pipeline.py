@@ -206,8 +206,7 @@ def write_probe_matrix(root: Path) -> Path:
                             "seed": 13,
                             "overrides": {"reward_scale": 0.8},
                         },
-                    ],
-                    "isaacgym": [],
+                    ]
                 },
             },
             indent=2,

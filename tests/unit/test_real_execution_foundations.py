@@ -283,8 +283,8 @@ def test_execution_service_captures_runtime_failure_reason(workspace_tmp_path: P
     candidate = build_candidate()
     request = ExecutionRequest(
         run_id="run-789",
-        backend=EnvironmentBackend.ISAACGYM,
-        environment_id="isaac-task",
+        backend=EnvironmentBackend.GYMNASIUM,
+        environment_id="Humanoid-v4",
         execution_mode=ExecutionMode.ACTUAL_BACKEND,
     )
 
@@ -296,12 +296,14 @@ def test_execution_service_captures_runtime_failure_reason(workspace_tmp_path: P
 
         del execution_request, reward_program
         raise ExecutionError(
-            "isaac runtime missing",
+            "gymnasium humanoid runtime missing",
             runtime_status=BackendRuntimeStatus(
-                backend=EnvironmentBackend.ISAACGYM,
+                backend=EnvironmentBackend.GYMNASIUM,
                 ready=False,
-                status_reason="isaacgym module import failed",
-                missing_prerequisites=["install approved isaac runtime in .venv"],
+                status_reason="gymnasium[mujoco] extra is not installed in the worktree .venv",
+                missing_prerequisites=[
+                    "install approved gymnasium[mujoco] dependencies in .venv"
+                ],
             ),
         )
 
@@ -311,4 +313,4 @@ def test_execution_service_captures_runtime_failure_reason(workspace_tmp_path: P
     assert result.runtime_status is not None
     assert result.runtime_status.ready is False
     assert result.run.failure_reason is not None
-    assert "isaac runtime missing" in result.run.failure_reason
+    assert "gymnasium humanoid runtime missing" in result.run.failure_reason

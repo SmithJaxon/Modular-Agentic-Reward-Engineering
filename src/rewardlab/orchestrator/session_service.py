@@ -18,7 +18,6 @@ from rewardlab.experiments.execution_service import (
     ExperimentRunner,
 )
 from rewardlab.experiments.gymnasium_runner import GymnasiumExperimentRunner
-from rewardlab.experiments.isaacgym_runner import IsaacGymExperimentRunner
 from rewardlab.experiments.robustness_runner import RobustnessRunner
 from rewardlab.feedback.demo_artifacts import DemoArtifactTracker
 from rewardlab.feedback.gating import FeedbackGateEvaluator
@@ -28,6 +27,7 @@ from rewardlab.llm.openai_client import OpenAIClient
 from rewardlab.orchestrator.checkpointing import CheckpointManager
 from rewardlab.orchestrator.iteration_engine import IterationEngine
 from rewardlab.orchestrator.reporting import SessionReportWriter
+from rewardlab.orchestrator.reward_designer import resolve_reward_designer
 from rewardlab.orchestrator.state_machine import TransitionRequest, apply_transition
 from rewardlab.persistence.event_log import EventRecord
 from rewardlab.persistence.session_repository import RepositoryPaths, SessionRepository
@@ -160,7 +160,6 @@ class SessionService:
         report_writer: SessionReportWriter | None = None,
         experiment_execution_service: ExperimentExecutionService | None = None,
         gymnasium_runner: GymnasiumExperimentRunner | None = None,
-        isaacgym_runner: IsaacGymExperimentRunner | None = None,
         robustness_runner: RobustnessRunner | None = None,
         human_feedback_service: HumanFeedbackService | None = None,
         peer_feedback_client: PeerFeedbackClient | None = None,
@@ -177,7 +176,9 @@ class SessionService:
                 event_log_path=paths.event_log_dir / "events.jsonl",
             )
         )
-        self.iteration_engine = iteration_engine or IterationEngine()
+        self.iteration_engine = iteration_engine or IterationEngine(
+            reward_designer=resolve_reward_designer(),
+        )
         self.selection_policy = selection_policy or CandidateSelectionPolicy()
         self.checkpoint_manager = checkpoint_manager or CheckpointManager(paths.checkpoint_dir)
         self.report_writer = report_writer or SessionReportWriter(paths.report_dir)
@@ -186,12 +187,10 @@ class SessionService:
             or ExperimentExecutionService(artifact_writer=paths.experiment_artifact_writer())
         )
         self.gymnasium_runner = gymnasium_runner or GymnasiumExperimentRunner()
-        self.isaacgym_runner = isaacgym_runner or IsaacGymExperimentRunner()
         self.robustness_runner = robustness_runner or _build_optional_robustness_runner(
             runtime_environment=runtime_environment,
             experiment_execution_service=self.experiment_execution_service,
             gymnasium_runner=self.gymnasium_runner,
-            isaacgym_runner=self.isaacgym_runner,
         )
         self.human_feedback_service = human_feedback_service or HumanFeedbackService(
             DemoArtifactTracker(paths.report_dir / "feedback_artifacts")
@@ -234,6 +233,8 @@ class SessionService:
                 "current_iteration": 0,
                 "no_improve_streak": 0,
                 "execution_mode": self.execution_mode.value,
+                "reward_designer_mode": self.iteration_engine.reward_designer.mode.value,
+                **_optional_reward_designer_metadata(self.iteration_engine),
             },
         )
         actual_session_id = session_id or _default_session_id()
@@ -307,6 +308,11 @@ class SessionService:
         candidates = self.list_candidates(session_id)
         current_candidate = max(candidates, key=lambda candidate: candidate.iteration_index)
         objective_text = str(session.metadata["objective_text"])
+        reflections = self.list_reflections(session_id)
+        latest_reflection = _latest_reflection_for_candidate(
+            reflections,
+            current_candidate.candidate_id,
+        )
         previous_best = self.selection_policy.select_best_candidate(
             candidates,
             assessments=_latest_assessment_map(
@@ -316,7 +322,10 @@ class SessionService:
         artifacts = self.iteration_engine.run_iteration(
             session_id=session_id,
             objective_text=objective_text,
+            environment_id=session.environment_id,
+            environment_backend=session.environment_backend,
             current_candidate=current_candidate,
+            latest_reflection=latest_reflection,
         )
         self._save_reflection(session_id, artifacts.reflection)
         self._save_candidate(artifacts.candidate)
@@ -625,7 +634,18 @@ class SessionService:
         """Execute one real-backend iteration and persist the resulting evidence."""
 
         candidates = self.list_candidates(session.session_id)
+        reflections = self.list_reflections(session.session_id)
         current_candidate = max(candidates, key=lambda candidate: candidate.iteration_index)
+        latest_reflection = _latest_reflection_for_candidate(
+            reflections,
+            current_candidate.candidate_id,
+        )
+        latest_run = _latest_experiment_run(
+            self.list_experiment_runs(
+                session_id=session.session_id,
+                candidate_id=current_candidate.candidate_id,
+            )
+        )
         previous_best = self.selection_policy.select_best_candidate(
             candidates,
             assessments=_latest_assessment_map(
@@ -633,11 +653,22 @@ class SessionService:
             ),
         )
         objective_text = str(session.metadata["objective_text"])
-        planned_iteration = self.iteration_engine.plan_iteration(
-            session_id=session.session_id,
-            objective_text=objective_text,
-            current_candidate=current_candidate,
-        )
+        try:
+            planned_iteration = self.iteration_engine.plan_iteration(
+                session_id=session.session_id,
+                objective_text=objective_text,
+                environment_id=session.environment_id,
+                environment_backend=session.environment_backend,
+                current_candidate=current_candidate,
+                latest_reflection=latest_reflection,
+                latest_run=latest_run,
+            )
+        except Exception as exc:
+            return self._pause_after_failed_design(
+                session=session,
+                previous_best=previous_best,
+                failure_reason=str(exc),
+            )
         execution_result = self.experiment_execution_service.execute_candidate(
             candidate=planned_iteration.candidate,
             request=ExecutionRequest(
@@ -763,6 +794,46 @@ class SessionService:
             best_candidate_id=updated_session.best_candidate_id,
         )
 
+    def _pause_after_failed_design(
+        self,
+        *,
+        session: SessionRecord,
+        previous_best: RewardCandidate,
+        failure_reason: str,
+    ) -> SteppedSession:
+        """Pause the session after candidate generation fails before execution begins."""
+
+        paused_session = apply_transition(
+            session,
+            TransitionRequest(
+                next_status=SessionStatus.PAUSED,
+                stop_reason=StopReason.API_FAILURE_PAUSE,
+                best_candidate_id=previous_best.candidate_id,
+            ),
+        )
+        paused_session = paused_session.model_copy(
+            update={
+                "metadata": {
+                    **session.metadata,
+                    "last_failed_design_error": failure_reason,
+                }
+            }
+        )
+        self.repository.save_session(paused_session)
+        self.repository.append_event(
+            session_id=session.session_id,
+            event_type="session.paused",
+            payload={
+                "design_error": failure_reason,
+            },
+        )
+        self._write_checkpoint(
+            paused_session,
+            candidates=self.list_candidates(session.session_id),
+            reflections=self.list_reflections(session.session_id),
+        )
+        raise RuntimeError(failure_reason)
+
     def _pause_after_failed_execution(
         self,
         *,
@@ -866,8 +937,6 @@ class SessionService:
 
         if environment_backend == EnvironmentBackend.GYMNASIUM:
             return self.gymnasium_runner
-        if environment_backend == EnvironmentBackend.ISAACGYM:
-            return self.isaacgym_runner
         raise RuntimeError(f"unsupported environment backend: {environment_backend.value!r}")
 
     def _get_required_session(self, session_id: str) -> SessionRecord:
@@ -1065,7 +1134,6 @@ def _build_optional_robustness_runner(
     runtime_environment: dict[str, str],
     experiment_execution_service: ExperimentExecutionService,
     gymnasium_runner: GymnasiumExperimentRunner,
-    isaacgym_runner: IsaacGymExperimentRunner,
 ) -> RobustnessRunner | None:
     """Return an env-enabled robustness runner, or `None` when disabled."""
 
@@ -1081,7 +1149,6 @@ def _build_optional_robustness_runner(
         probe_matrix_path=probe_matrix_path,
         experiment_execution_service=experiment_execution_service,
         gymnasium_runner=gymnasium_runner,
-        isaacgym_runner=isaacgym_runner,
     )
 
 
@@ -1149,3 +1216,37 @@ def _env_truthy(value: str | None) -> bool:
     if value is None:
         return False
     return value.strip().casefold() in {"1", "true", "yes", "on"}
+
+
+def _latest_reflection_for_candidate(
+    reflections: list[ReflectionRecord],
+    candidate_id: str,
+) -> ReflectionRecord | None:
+    """Return the latest reflection stored for the supplied candidate."""
+
+    matching_reflections = [
+        reflection for reflection in reflections if reflection.candidate_id == candidate_id
+    ]
+    if not matching_reflections:
+        return None
+    return matching_reflections[-1]
+
+
+def _latest_experiment_run(
+    runs: list[ExperimentRun],
+) -> ExperimentRun | None:
+    """Return the latest persisted experiment run from an ordered run list."""
+
+    if not runs:
+        return None
+    return runs[-1]
+
+
+def _optional_reward_designer_metadata(iteration_engine: IterationEngine) -> dict[str, str]:
+    """Return metadata describing the configured reward designer when available."""
+
+    config = getattr(iteration_engine.reward_designer, "config", None)
+    model = getattr(config, "model", None)
+    if isinstance(model, str) and model:
+        return {"reward_designer_model": model}
+    return {}
