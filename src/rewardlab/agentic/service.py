@@ -19,7 +19,6 @@ from rewardlab.agentic.benchmarking import (
 )
 from rewardlab.agentic.contracts import ControllerAction, ToolResult
 from rewardlab.agentic.controller import ControllerAgent, ControllerContext
-from rewardlab.agentic.mcp_invoker import McpToolInvoker
 from rewardlab.agentic.policy_engine import PolicyEngine
 from rewardlab.agentic.spec_loader import load_experiment_spec
 from rewardlab.agentic.tool_broker import ToolBroker
@@ -190,7 +189,6 @@ class AgentExperimentService:
             estimate_cost_and_risk_tool=EstimateCostAndRiskTool(),
             compare_candidates_tool=CompareCandidatesTool(),
             request_human_feedback_tool=RequestHumanFeedbackTool(),
-            mcp_tool_invoker=McpToolInvoker(),
         )
 
     @classmethod

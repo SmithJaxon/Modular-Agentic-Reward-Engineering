@@ -32,8 +32,6 @@ __all__ = [
     "ExecutionRolloutConfig",
     "GovernanceConfig",
     "HumanFeedbackPolicy",
-    "McpExecutionMode",
-    "McpServerConfig",
     "ModelConfig",
     "ModelSetConfig",
     "OutputConfig",
@@ -65,47 +63,6 @@ class ActionType(StrEnum):
     COMPARE_CANDIDATES = "compare_candidates"
     REQUEST_HUMAN_FEEDBACK = "request_human_feedback"
     STOP = "stop"
-
-
-class McpExecutionMode(StrEnum):
-    """Execution policy for MCP-backed tool invocation."""
-
-    OFF = "off"
-    PREFER = "prefer"
-    REQUIRED = "required"
-
-
-class McpServerConfig(BaseModel):
-    """Remote MCP server configuration used by native MCP tool execution."""
-
-    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
-
-    server_label: str = Field(min_length=1)
-    server_url: str | None = None
-    connector_id: str | None = None
-    allowed_tools: list[str] | None = None
-    require_approval: str = "never"
-    server_description: str | None = None
-    headers: dict[str, str] = Field(default_factory=dict)
-    authorization_env_var: str | None = None
-
-    @field_validator("require_approval")
-    @classmethod
-    def validate_require_approval(cls, value: str) -> str:
-        """Restrict approval policy to recognized values."""
-
-        normalized = value.strip().lower()
-        if normalized not in {"always", "never"}:
-            raise ValueError("require_approval must be either 'always' or 'never'")
-        return normalized
-
-    @model_validator(mode="after")
-    def validate_connection_target(self) -> McpServerConfig:
-        """Require one explicit MCP server target."""
-
-        if bool(self.server_url) == bool(self.connector_id):
-            raise ValueError("exactly one of server_url or connector_id is required")
-        return self
 
 
 class EnvironmentConfig(BaseModel):
@@ -257,8 +214,6 @@ class ToolPolicyConfig(BaseModel):
     allowed_tools: list[str] = Field(min_length=1)
     default_timeout_seconds: int = Field(default=1_800, ge=1)
     max_retries_per_tool: int = Field(default=2, ge=0)
-    mcp_execution_mode: McpExecutionMode = McpExecutionMode.OFF
-    mcp_servers: list[McpServerConfig] = Field(default_factory=list)
 
     @field_validator("allowed_tools")
     @classmethod
@@ -288,16 +243,6 @@ class ToolPolicyConfig(BaseModel):
             joined = ", ".join(repr(item) for item in missing)
             raise ValueError(f"allowed_tools is missing required entries: {joined}")
         return normalized
-
-    @model_validator(mode="after")
-    def validate_mcp_policy(self) -> ToolPolicyConfig:
-        """Ensure MCP policy fields remain coherent."""
-
-        if self.mcp_execution_mode == McpExecutionMode.REQUIRED and len(self.mcp_servers) == 0:
-            raise ValueError(
-                "mcp_servers must include at least one entry when mcp_execution_mode='required'"
-            )
-        return self
 
 
 class ExecutionPpoConfig(BaseModel):

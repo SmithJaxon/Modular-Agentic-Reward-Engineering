@@ -196,18 +196,17 @@
   - PASS, report emitted at:
     - `.rewardlab/reports/agent_benchmarks/benchmark-smoke-20260411.benchmark.json`
 
-## 2026-04-16 MCP + Architecture Gap Closure
+## 2026-04-16 Local-Only Tool Runtime Consolidation
 
 ### Implemented
 
-- Added OpenAI Responses API support and MCP-native tool invocation path:
-  - `src/rewardlab/llm/openai_client.py`
-  - `src/rewardlab/agentic/mcp_invoker.py`
-- Added configurable MCP execution policy (`off|prefer|required`) and server
-  configuration in agent experiment schema:
-  - `src/rewardlab/schemas/agent_experiment.py`
-- Enforced broker timeout/retry semantics and MCP fallback behavior:
+- Removed MCP-specific runtime path and server-policy schema fields:
+  - deleted `src/rewardlab/agentic/mcp_invoker.py`
+  - simplified `src/rewardlab/schemas/agent_experiment.py` tool policy
+- Kept and enforced broker timeout/retry semantics for local execution:
   - `src/rewardlab/agentic/tool_broker.py`
+- Removed MCP wiring from autonomous service construction:
+  - `src/rewardlab/agentic/service.py`
 - Added missing required tools and allowlist/runtime parity:
   - `src/rewardlab/agentic/tools/summarize_run_artifacts.py`
   - `src/rewardlab/agentic/tools/validate_reward_program.py`
@@ -221,7 +220,6 @@
   - `tests/integration/test_agentic_humanoid_mixed_actions.py`
   - `tests/unit/test_agentic_tool_broker.py`
   - `tests/unit/test_agentic_tools.py`
-  - `tests/unit/test_foundational_components.py`
   - `tests/unit/test_agent_experiment_spec.py`
 - Applied hygiene updates:
   - `.gitignore` runtime artifact and `src/rewardlab.egg-info/` policy
@@ -232,12 +230,12 @@
 ### Validation
 
 - Focused regression suite:
-  - `.venv\Scripts\python.exe -m pytest tests/unit/test_foundational_components.py tests/unit/test_agent_experiment_spec.py tests/unit/test_agentic_tool_broker.py tests/unit/test_agentic_tools.py tests/unit/test_gymnasium_call_arguments.py tests/unit/test_agentic_controller.py tests/integration/test_agentic_humanoid_mixed_actions.py -q`
-  - Result: `36 passed`
+  - `.venv\Scripts\python.exe -m pytest tests/unit/test_agent_experiment_spec.py tests/unit/test_agentic_tool_broker.py tests/unit/test_agentic_tools.py tests/unit/test_gymnasium_call_arguments.py tests/unit/test_agentic_controller.py tests/integration/test_agentic_humanoid_mixed_actions.py -q`
+  - Result: `15 passed`
 - Full validation gate:
   - `powershell -ExecutionPolicy Bypass -File tools/quality/run_full_validation.ps1`
   - Result:
     - `check_headers`: PASS
     - `ruff`: PASS
-    - `mypy`: PASS (`67 source files`)
-    - `pytest` offline suite: `90 passed, 1 skipped`
+    - `mypy`: PASS (`66 source files`)
+    - `pytest` offline suite: `87 passed, 1 skipped`

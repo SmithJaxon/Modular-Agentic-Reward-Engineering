@@ -11,7 +11,6 @@ from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 
 from rewardlab.agentic.contracts import ControllerAction, ToolResult
-from rewardlab.agentic.mcp_invoker import McpToolInvoker
 from rewardlab.agentic.tools.compare_candidates import CompareCandidatesTool
 from rewardlab.agentic.tools.estimate_cost_and_risk import EstimateCostAndRiskTool
 from rewardlab.agentic.tools.propose_reward import ProposeRewardTool
@@ -19,11 +18,7 @@ from rewardlab.agentic.tools.request_human_feedback import RequestHumanFeedbackT
 from rewardlab.agentic.tools.run_experiment import RunExperimentTool
 from rewardlab.agentic.tools.summarize_run_artifacts import SummarizeRunArtifactsTool
 from rewardlab.agentic.tools.validate_reward_program import ValidateRewardProgramTool
-from rewardlab.schemas.agent_experiment import (
-    ActionType,
-    AgentExperimentRecord,
-    McpExecutionMode,
-)
+from rewardlab.schemas.agent_experiment import ActionType, AgentExperimentRecord
 from rewardlab.schemas.experiment_run import ExperimentRun
 from rewardlab.schemas.reward_candidate import RewardCandidate
 
@@ -52,7 +47,6 @@ class ToolBroker:
         estimate_cost_and_risk_tool: EstimateCostAndRiskTool,
         compare_candidates_tool: CompareCandidatesTool,
         request_human_feedback_tool: RequestHumanFeedbackTool,
-        mcp_tool_invoker: McpToolInvoker | None = None,
     ) -> None:
         """Store tool executors used during autonomous control."""
 
@@ -63,7 +57,6 @@ class ToolBroker:
         self.estimate_cost_and_risk_tool = estimate_cost_and_risk_tool
         self.compare_candidates_tool = compare_candidates_tool
         self.request_human_feedback_tool = request_human_feedback_tool
-        self.mcp_tool_invoker = mcp_tool_invoker
 
     def execute_action(
         self,
@@ -82,19 +75,6 @@ class ToolBroker:
                 summary=f"tool {tool_name!r} is not allowed by experiment policy",
                 payload={"tool_name": tool_name},
             )
-
-        mcp_mode = record.spec.tool_policy.mcp_execution_mode
-        if mcp_mode != McpExecutionMode.OFF and self.mcp_tool_invoker is not None:
-            mcp_result = self.mcp_tool_invoker.execute_action(
-                record=record,
-                action=action,
-                candidates=candidates,
-                runs=runs,
-            )
-            if mcp_result.status == "ok":
-                return mcp_result
-            if mcp_mode == McpExecutionMode.REQUIRED:
-                return mcp_result
 
         return self._execute_local_with_policy(
             record=record,

@@ -1,5 +1,5 @@
 """
-Summary: Unit tests for agentic tool broker retry/timeout and MCP fallback semantics.
+Summary: Unit tests for agentic tool broker retry and timeout semantics.
 Created: 2026-04-16
 Last Updated: 2026-04-16
 """
@@ -63,17 +63,6 @@ class SlowTool:
         del kwargs
         time.sleep(self.sleep_seconds)
         return ToolResult(status="ok", summary="finished late")
-
-
-@dataclass
-class FailingMcpInvoker:
-    """MCP invoker double that always returns an execution error."""
-
-    def execute_action(self, **kwargs: object) -> ToolResult:
-        """Return a deterministic MCP failure payload."""
-
-        del kwargs
-        return ToolResult(status="error", summary="mcp unavailable")
 
 
 def _record_from_fixture() -> AgentExperimentRecord:
@@ -182,52 +171,3 @@ def test_tool_broker_enforces_timeout_for_local_tools() -> None:
 
     assert result.status == "error"
     assert "timed out" in result.summary
-
-
-def test_tool_broker_falls_back_to_local_when_mcp_prefer_fails() -> None:
-    """MCP `prefer` policy should fallback to local tools on MCP failure."""
-
-    base_record = _record_from_fixture()
-    record = base_record.model_copy(
-        update={
-            "spec": base_record.spec.model_copy(
-                update={
-                    "tool_policy": base_record.spec.tool_policy.model_copy(
-                        update={
-                            "mcp_execution_mode": "prefer",
-                            "mcp_servers": [
-                                {
-                                    "server_label": "local",
-                                    "server_url": "https://mcp.example.invalid/sse",
-                                    "allowed_tools": ["compare_candidates"],
-                                }
-                            ],
-                        }
-                    )
-                }
-            )
-        }
-    )
-    broker = ToolBroker(
-        run_experiment_tool=StaticTool(ToolResult(status="ok", summary="noop")),  # type: ignore[arg-type]
-        propose_reward_tool=StaticTool(ToolResult(status="ok", summary="noop")),  # type: ignore[arg-type]
-        summarize_run_artifacts_tool=StaticTool(ToolResult(status="ok", summary="noop")),  # type: ignore[arg-type]
-        validate_reward_program_tool=StaticTool(ToolResult(status="ok", summary="noop")),  # type: ignore[arg-type]
-        estimate_cost_and_risk_tool=StaticTool(ToolResult(status="ok", summary="noop")),  # type: ignore[arg-type]
-        compare_candidates_tool=StaticTool(ToolResult(status="ok", summary="local success")),  # type: ignore[arg-type]
-        request_human_feedback_tool=StaticTool(ToolResult(status="ok", summary="noop")),  # type: ignore[arg-type]
-        mcp_tool_invoker=FailingMcpInvoker(),  # type: ignore[arg-type]
-    )
-
-    result = broker.execute_action(
-        record=record,
-        action=ControllerAction(
-            action_type=ActionType.COMPARE_CANDIDATES,
-            rationale="compare candidates",
-        ),
-        candidates=[_candidate()],
-        runs=[],
-    )
-
-    assert result.status == "ok"
-    assert result.summary == "local success"

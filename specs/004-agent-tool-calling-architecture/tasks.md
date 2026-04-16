@@ -11,8 +11,8 @@
 ## Stabilization And Gap Closure
 
 - [x] T006 Fix green-gate regressions (`check_headers`, `mypy`, failing tests)
-- [x] T007 Implement MCP-native tool-calling path for agentic actions
-- [x] T008 Add configurable MCP execution policy (`off|prefer|required`)
+- [x] T007 Remove MCP execution path and consolidate local in-process tool execution
+- [x] T008 Remove MCP policy/server spec fields and related tests/docs
 - [x] T009 Wire control-mode resolver (`session_pipeline|agent_tools`) with compatibility behavior
 - [x] T010 Enforce broker timeout/retry semantics from tool policy
 - [x] T011 Implement runtime output controls from spec (`runtime_dir`, `report_detail`, `save_decision_trace`)

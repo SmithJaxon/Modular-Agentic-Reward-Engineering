@@ -55,15 +55,12 @@ dynamically based on evidence, budgets, and governance policy.
   feedback artifacts.
 - The system SHALL expose status and trace retrieval via CLI.
 
-### FR-006 MCP-Native Tool Calling (New)
+### FR-006 Local-Only Tool Execution
 
-- The system SHALL support native MCP tool calls through OpenAI Responses API
-  when MCP servers are configured.
-- MCP execution SHALL support:
-  - `off`: local tools only
-  - `prefer`: attempt MCP first, fallback to local tools on failure
-  - `required`: fail when MCP execution is unavailable/fails
-- MCP tool results SHALL be normalized back into `ToolResult` contracts.
+- The runtime SHALL execute agent actions through in-process local tool
+  implementations when running on the experiment host machine.
+- Action execution SHALL remain normalized through `ToolResult` contracts.
+- No remote MCP server configuration SHALL be required for standard operation.
 
 ### FR-007 Control-Mode Compatibility
 
@@ -93,7 +90,7 @@ dynamically based on evidence, budgets, and governance policy.
 
 ## Non-Functional Requirements
 
-- NFR-001: Offline-safe default behavior when credentials or MCP are absent.
+- NFR-001: Offline-safe default behavior when model credentials are absent.
 - NFR-002: Deterministic fallback path for tests and low-cost smoke workflows.
 - NFR-003: Keep local artifacts/workflows worktree-scoped.
 - NFR-004: Maintain lint/type/test quality gates.
@@ -102,6 +99,6 @@ dynamically based on evidence, budgets, and governance policy.
 
 1. Autonomous runs can execute from a spec file and persist full trace evidence.
 2. Controller can issue mixed action sequences with policy-valid outcomes.
-3. MCP-native execution path is available and configurable (`off|prefer|required`).
+3. Local tool execution is the default and only required action runtime path.
 4. Tool-policy timeout/retry controls are enforced at runtime.
 5. Validation suite passes (`check_headers`, `ruff`, `mypy`, offline pytest).
