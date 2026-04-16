@@ -56,6 +56,7 @@ class ActionType(StrEnum):
     """Actions the controller may request in one decision step."""
 
     RUN_EXPERIMENT = "run_experiment"
+    RUN_ROBUSTNESS_PROBES = "run_robustness_probes"
     PROPOSE_REWARD = "propose_reward"
     SUMMARIZE_RUN_ARTIFACTS = "summarize_run_artifacts"
     VALIDATE_REWARD_PROGRAM = "validate_reward_program"

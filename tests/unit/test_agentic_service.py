@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
@@ -18,6 +19,7 @@ from rewardlab.agentic.spec_loader import load_experiment_spec
 from rewardlab.orchestrator.session_service import ServicePaths
 from rewardlab.persistence.session_repository import RepositoryPaths, SessionRepository
 from rewardlab.schemas.agent_experiment import ActionType
+from rewardlab.schemas.experiment_run import ExecutionMode, RunStatus, RunType
 
 
 @dataclass
@@ -92,6 +94,58 @@ class FeedbackThenStopBroker:
                     "request_id": "feedback-001",
                     "candidate_id": candidate_id,
                     "feedback_gate": "one_required",
+                },
+            )
+        return ToolResult(status="ok", summary="stop", payload={"stop": True})
+
+
+@dataclass
+class RobustnessThenStopBroker:
+    """Broker fake that emits one robustness assessment before stopping."""
+
+    def execute_action(self, **kwargs: object) -> ToolResult:
+        """Return deterministic robustness payloads keyed by action type."""
+
+        action = kwargs["action"]
+        record = kwargs["record"]
+        candidates = kwargs["candidates"]
+        action_type = action.action_type.value
+        if action_type == "run_robustness_probes":
+            candidate_id = candidates[0].candidate_id
+            run_id = f"{candidate_id}-robustness-001"
+            return ToolResult(
+                status="ok",
+                summary="robustness complete",
+                payload={
+                    "candidate_id": candidate_id,
+                    "primary_run_id": f"{record.experiment_id}-run-000",
+                    "robustness_runs": [
+                        {
+                            "run_id": run_id,
+                            "candidate_id": candidate_id,
+                            "backend": record.spec.environment.backend.value,
+                            "environment_id": record.spec.environment.id,
+                            "run_type": RunType.ROBUSTNESS.value,
+                            "execution_mode": ExecutionMode.ACTUAL_BACKEND.value,
+                            "variant_label": "seed-17",
+                            "status": RunStatus.COMPLETED.value,
+                            "metrics": {"episode_reward": 0.4, "train_timesteps": 100},
+                            "artifact_refs": ["manifest.json", "metrics.json"],
+                            "started_at": datetime(2026, 4, 10, 12, 1, tzinfo=UTC).isoformat(),
+                            "ended_at": datetime(2026, 4, 10, 12, 2, tzinfo=UTC).isoformat(),
+                        }
+                    ],
+                    "assessment": {
+                        "assessment_id": f"{candidate_id}-robustness",
+                        "candidate_id": candidate_id,
+                        "backend": record.spec.environment.backend.value,
+                        "primary_run_id": f"{record.experiment_id}-run-000",
+                        "probe_run_ids": [run_id],
+                        "variant_count": 1,
+                        "degradation_ratio": 0.52,
+                        "risk_level": "high",
+                        "risk_notes": "Strong degradation under probe variant.",
+                    },
                 },
             )
         return ToolResult(status="ok", summary="stop", payload={"stop": True})
@@ -289,3 +343,58 @@ def test_run_benchmark_writes_aggregate_report() -> None:
     payload = json.loads(report_path.read_text(encoding="utf-8"))
     assert payload["benchmark_id"] == result.benchmark_id
     assert payload["seeds"] == [3, 5]
+
+
+def test_run_robustness_action_persists_assessment_and_probe_runs() -> None:
+    """Service should persist robustness runs and assessments from tool results."""
+
+    runtime_root = Path(".agentic-test-runtime-robustness")
+    paths, repository = _service_for_runtime(runtime_root)
+    spec_payload = load_experiment_spec(
+        Path("tools/fixtures/experiments/agent_cartpole_lowcost.yaml")
+    ).model_dump(mode="python")
+    spec_payload["tool_policy"]["allowed_tools"].append("run_robustness_probes")
+    spec_file = runtime_root / "agent_robustness_enabled.json"
+    runtime_root.mkdir(parents=True, exist_ok=True)
+    spec_file.write_text(json.dumps(spec_payload), encoding="utf-8")
+
+    controller = SequenceController(
+        actions=[
+            ControllerAction(
+                action_type=ActionType.RUN_ROBUSTNESS_PROBES,
+                rationale="probe reward-hacking risk",
+                expected_value=0.2,
+                expected_cost=0.1,
+                action_input={},
+            ),
+            ControllerAction(
+                action_type=ActionType.STOP,
+                rationale="done",
+                expected_value=0.0,
+                expected_cost=0.0,
+                action_input={},
+            ),
+        ]
+    )
+    service = AgentExperimentService(
+        paths=paths,
+        repository=repository,
+        controller=controller,  # type: ignore[arg-type]
+        tool_broker=RobustnessThenStopBroker(),  # type: ignore[arg-type]
+    )
+    service.initialize()
+
+    result = service.run_experiment(
+        spec_file=spec_file,
+        experiment_id=f"experiment-robustness-{uuid4().hex[:8]}",
+    )
+
+    assert result.status.value == "completed"
+    trace = service.trace_payload(experiment_id=result.experiment_id)
+    assert len(trace["robustness_assessments"]) == 1
+    robustness_runs = [
+        run for run in trace["runs"] if run["run_type"] == RunType.ROBUSTNESS.value
+    ]
+    assert len(robustness_runs) == 1
+    status = service.get_status(experiment_id=result.experiment_id)
+    assert status.consumed_experiments == 1

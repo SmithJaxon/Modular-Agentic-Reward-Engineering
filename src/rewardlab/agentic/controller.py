@@ -22,6 +22,7 @@ from rewardlab.schemas.reward_candidate import RewardCandidate
 
 ACTION_TOOL_NAME: dict[ActionType, str] = {
     ActionType.RUN_EXPERIMENT: "run_experiment",
+    ActionType.RUN_ROBUSTNESS_PROBES: "run_robustness_probes",
     ActionType.PROPOSE_REWARD: "propose_reward_revision",
     ActionType.SUMMARIZE_RUN_ARTIFACTS: "summarize_run_artifacts",
     ActionType.VALIDATE_REWARD_PROGRAM: "validate_reward_program",
@@ -116,6 +117,17 @@ class ControllerAgent:
         scored_candidates = [
             candidate for candidate in candidates if candidate.aggregate_score is not None
         ]
+        latest_completed_performance_runs = [
+            run
+            for run in context.runs
+            if run.candidate_id == latest.candidate_id
+            and run.run_type.value == "performance"
+            and run.status.value == "completed"
+        ]
+        latest_has_robustness_probe = any(
+            run.candidate_id == latest.candidate_id and run.run_type.value == "robustness"
+            for run in context.runs
+        )
 
         if context.failed_actions >= stopping.max_failed_actions:
             return ControllerAction(
@@ -200,6 +212,31 @@ class ControllerAgent:
                 ),
                 expected_value=0.3,
                 expected_cost=0.03,
+            )
+
+        if (
+            context.no_improve_streak > 0
+            and len(latest_completed_performance_runs) > 0
+            and not latest_has_robustness_probe
+            and "run_robustness_probes" not in recent_action_types
+            and _is_action_type_allowed(
+                ActionType.RUN_ROBUSTNESS_PROBES,
+                spec.tool_policy.allowed_tools,
+            )
+        ):
+            primary_run = latest_completed_performance_runs[-1]
+            return ControllerAction(
+                action_type=ActionType.RUN_ROBUSTNESS_PROBES,
+                rationale=(
+                    "Recent stall warrants robustness probing to check for reward hacking "
+                    "or brittle overfitting."
+                ),
+                expected_value=0.35,
+                expected_cost=0.25,
+                action_input={
+                    "candidate_id": latest.candidate_id,
+                    "primary_run_id": primary_run.run_id,
+                },
             )
 
         if context.no_improve_streak >= stopping.max_no_improve_streak:

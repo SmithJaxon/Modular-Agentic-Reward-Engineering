@@ -110,6 +110,7 @@ def test_tool_broker_retries_and_returns_success_after_transient_failure() -> No
     )
     broker = ToolBroker(
         run_experiment_tool=StaticTool(ToolResult(status="ok", summary="noop")),  # type: ignore[arg-type]
+        run_robustness_probes_tool=StaticTool(ToolResult(status="ok", summary="noop")),  # type: ignore[arg-type]
         propose_reward_tool=StaticTool(ToolResult(status="ok", summary="noop")),  # type: ignore[arg-type]
         summarize_run_artifacts_tool=StaticTool(ToolResult(status="ok", summary="noop")),  # type: ignore[arg-type]
         validate_reward_program_tool=retry_tool,  # type: ignore[arg-type]
@@ -151,6 +152,7 @@ def test_tool_broker_enforces_timeout_for_local_tools() -> None:
     )
     broker = ToolBroker(
         run_experiment_tool=StaticTool(ToolResult(status="ok", summary="noop")),  # type: ignore[arg-type]
+        run_robustness_probes_tool=StaticTool(ToolResult(status="ok", summary="noop")),  # type: ignore[arg-type]
         propose_reward_tool=StaticTool(ToolResult(status="ok", summary="noop")),  # type: ignore[arg-type]
         summarize_run_artifacts_tool=StaticTool(ToolResult(status="ok", summary="noop")),  # type: ignore[arg-type]
         validate_reward_program_tool=StaticTool(ToolResult(status="ok", summary="noop")),  # type: ignore[arg-type]

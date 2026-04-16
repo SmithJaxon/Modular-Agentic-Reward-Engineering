@@ -41,8 +41,9 @@ class ProposeRewardTool:
     ) -> ToolResult:
         """Return the next candidate revision result payload."""
 
+        ordered_candidates = sorted(candidates, key=lambda candidate: candidate.iteration_index)
         parent_candidate = _select_parent_candidate(
-            candidates=candidates,
+            candidates=ordered_candidates,
             action_input=action_input,
         )
         latest_parent_run = _latest_run_for_candidate(
@@ -70,6 +71,12 @@ class ProposeRewardTool:
             next_iteration_index=parent_candidate.iteration_index + 1,
             latest_reflection=None,
             latest_run=latest_parent_run,
+            prior_candidates=tuple(ordered_candidates),
+            recent_decisions=_list_of_dicts(action_input.get("recent_decision_context")),
+            recent_feedback=_list_of_dicts(action_input.get("recent_feedback_context")),
+            recent_robustness_assessments=_list_of_dicts(
+                action_input.get("recent_robustness_context")
+            ),
         )
         try:
             result = designer.design_next_candidate(request)
@@ -160,3 +167,12 @@ def _latest_run_for_candidate(
     if not matching:
         return None
     return matching[-1]
+
+
+def _list_of_dicts(value: object) -> tuple[dict[str, object], ...]:
+    """Return a tuple of dictionaries from optional action-input context values."""
+
+    if not isinstance(value, list):
+        return ()
+    normalized = [item for item in value if isinstance(item, dict)]
+    return tuple(normalized)

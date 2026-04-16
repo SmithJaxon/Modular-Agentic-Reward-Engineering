@@ -6,6 +6,7 @@ Last Updated: 2026-04-06
 
 from __future__ import annotations
 
+import hashlib
 import inspect
 import json
 from collections.abc import Sequence
@@ -92,6 +93,10 @@ class RewardDesignRequest:
     next_iteration_index: int
     latest_reflection: ReflectionRecord | None = None
     latest_run: ExperimentRun | None = None
+    prior_candidates: tuple[RewardCandidate, ...] = ()
+    recent_decisions: tuple[dict[str, Any], ...] = ()
+    recent_feedback: tuple[dict[str, Any], ...] = ()
+    recent_robustness_assessments: tuple[dict[str, Any], ...] = ()
     allowed_parameter_names: tuple[str, ...] = ()
 
 
@@ -177,6 +182,7 @@ class OpenAIRewardDesigner:
         allowed_parameter_names = request.allowed_parameter_names or _default_allowed_parameters(
             request.current_candidate
         )
+        disallowed_reward_signatures = _candidate_reward_signatures(request.prior_candidates)
         base_messages: tuple[ChatMessage, ...] = (
             ChatMessage(
                 role="system",
@@ -208,6 +214,9 @@ class OpenAIRewardDesigner:
                             error_message=str(last_error),
                             previous_content=last_content,
                             allowed_parameter_names=allowed_parameter_names,
+                            disallowed_reward_signatures=tuple(
+                                sorted(disallowed_reward_signatures)
+                            ),
                         ),
                     ),
                 )
@@ -228,6 +237,7 @@ class OpenAIRewardDesigner:
                     session_id=request.session_id,
                     iteration_index=request.next_iteration_index,
                     allowed_parameter_names=allowed_parameter_names,
+                    disallowed_reward_signatures=disallowed_reward_signatures,
                     model_name=self.config.model,
                 )
             except RuntimeError as exc:
@@ -263,6 +273,28 @@ def _build_design_prompt(
 ) -> str:
     """Build the prompt for one reward-improvement iteration."""
 
+    prior_candidates = (
+        list(request.prior_candidates)
+        if len(request.prior_candidates) > 0
+        else [request.current_candidate]
+    )
+    recent_candidates = sorted(
+        prior_candidates,
+        key=lambda candidate: candidate.iteration_index,
+    )[-12:]
+    candidate_history = [
+        {
+            "candidate_id": candidate.candidate_id,
+            "iteration_index": candidate.iteration_index,
+            "aggregate_score": candidate.aggregate_score,
+            "change_summary": candidate.change_summary,
+            "reward_signature": _reward_signature(candidate.reward_definition),
+        }
+        for candidate in recent_candidates
+    ]
+    disallowed_signatures = sorted(
+        _candidate_reward_signatures(tuple(prior_candidates))
+    )
     latest_metrics = (
         json.dumps(request.latest_run.metrics, sort_keys=True, indent=2)
         if request.latest_run is not None
@@ -278,6 +310,26 @@ def _build_design_prompt(
         if request.latest_reflection is not None
         else "- Start from the baseline reward and propose a stronger shaping signal."
     )
+    decision_context = (
+        json.dumps(list(request.recent_decisions)[-8:], indent=2)
+        if len(request.recent_decisions) > 0
+        else "None available."
+    )
+    feedback_context = (
+        json.dumps(list(request.recent_feedback)[-6:], indent=2)
+        if len(request.recent_feedback) > 0
+        else "None available."
+    )
+    robustness_context = (
+        json.dumps(list(request.recent_robustness_assessments)[-6:], indent=2)
+        if len(request.recent_robustness_assessments) > 0
+        else "None available."
+    )
+    signature_line = (
+        ", ".join(disallowed_signatures[-16:])
+        if len(disallowed_signatures) > 0
+        else "none"
+    )
     return (
         f"Session: {request.session_id}\n"
         f"Iteration to produce: {request.next_iteration_index}\n"
@@ -287,6 +339,10 @@ def _build_design_prompt(
         f"Current candidate score: {request.current_candidate.aggregate_score}\n"
         f"Current candidate change summary:\n{request.current_candidate.change_summary}\n\n"
         f"Current reward definition:\n{request.current_candidate.reward_definition}\n\n"
+        f"Candidate history (recent):\n{json.dumps(candidate_history, indent=2)}\n\n"
+        f"Recent decision context:\n{decision_context}\n\n"
+        f"Recent human feedback context:\n{feedback_context}\n\n"
+        f"Recent robustness context:\n{robustness_context}\n\n"
         f"Latest reflection summary:\n{latest_reflection_summary}\n\n"
         f"Latest proposed changes:\n{latest_proposed_changes}\n\n"
         f"Latest run metrics:\n{latest_metrics}\n\n"
@@ -300,6 +356,8 @@ def _build_design_prompt(
         "- Use only these allowed callable parameters: "
         f"{', '.join(allowed_parameter_names)}.\n"
         "- You may use a subset of those parameters, but do not require any other names.\n"
+        "- Avoid cyclic revisions: do not repeat any previously used reward signature.\n"
+        f"- Disallowed historical reward signatures: {signature_line}.\n"
         "- Keep the reward concise, executable, and directly aligned with the objective.\n"
     )
 
@@ -310,6 +368,7 @@ def _parse_design_response(
     session_id: str,
     iteration_index: int,
     allowed_parameter_names: Sequence[str],
+    disallowed_reward_signatures: set[str],
     model_name: str,
 ) -> RewardDesignResult:
     """Parse, validate, and normalize a model-backed design response."""
@@ -353,6 +412,12 @@ def _parse_design_response(
         raise RuntimeError(
             "reward designer introduced unsupported callable parameters: "
             f"{joined}"
+        )
+    proposed_signature = _reward_signature(reward_definition)
+    if proposed_signature in disallowed_reward_signatures:
+        raise RuntimeError(
+            "reward designer produced a previously used reward definition "
+            f"(signature={proposed_signature})"
         )
 
     return RewardDesignResult(
@@ -425,10 +490,16 @@ def _build_retry_instruction(
     error_message: str,
     previous_content: str,
     allowed_parameter_names: Sequence[str],
+    disallowed_reward_signatures: Sequence[str],
 ) -> str:
     """Build a repair prompt after an invalid model response."""
 
     previous_excerpt = previous_content.strip() or "<blank>"
+    disallowed = (
+        ", ".join(disallowed_reward_signatures[-16:])
+        if disallowed_reward_signatures
+        else "none"
+    )
     return (
         "Your previous JSON was invalid for execution.\n"
         f"Validation error: {error_message}\n"
@@ -438,8 +509,30 @@ def _build_retry_instruction(
         "- Do not use *args or **kwargs in the reward signature.\n"
         "- Use only allowed callable parameters: "
         f"{', '.join(allowed_parameter_names)}.\n"
+        "- Do not repeat these historical reward signatures: "
+        f"{disallowed}.\n"
         "- Keep the reward executable Python source without Markdown fences.\n"
     )
+
+
+def _candidate_reward_signatures(candidates: Sequence[RewardCandidate]) -> set[str]:
+    """Return signatures for previously used reward definitions."""
+
+    return {_reward_signature(candidate.reward_definition) for candidate in candidates}
+
+
+def _reward_signature(source_text: str) -> str:
+    """Return a stable signature for reward code to detect cyclical repeats."""
+
+    normalized_lines = []
+    for line in source_text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("#"):
+            continue
+        normalized_lines.append("".join(stripped.split()))
+    normalized_source = "\n".join(normalized_lines).strip().lower()
+    digest = hashlib.sha256(normalized_source.encode("utf-8")).hexdigest()
+    return digest[:12]
 
 
 def _reasoning_effort_from_environment(

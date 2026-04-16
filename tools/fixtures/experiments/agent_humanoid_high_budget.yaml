@@ -55,6 +55,7 @@ governance:
 tool_policy:
   allowed_tools:
     - run_experiment
+    - run_robustness_probes
     - summarize_run_artifacts
     - propose_reward_revision
     - validate_reward_program

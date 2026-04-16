@@ -28,6 +28,7 @@ from rewardlab.agentic.tools import (
     ProposeRewardTool,
     RequestHumanFeedbackTool,
     RunExperimentTool,
+    RunRobustnessProbesTool,
     SummarizeRunArtifactsTool,
     ValidateRewardProgramTool,
 )
@@ -49,6 +50,7 @@ from rewardlab.schemas.agent_experiment import (
 from rewardlab.schemas.experiment_run import ExperimentRun
 from rewardlab.schemas.feedback_entry import FeedbackEntry
 from rewardlab.schemas.reward_candidate import RewardCandidate
+from rewardlab.schemas.robustness_assessment import RobustnessAssessment
 from rewardlab.schemas.session_config import FeedbackGate
 
 AGENT_EXPERIMENTS_NAMESPACE = "agent_experiments"
@@ -183,6 +185,9 @@ class AgentExperimentService:
         self.human_feedback_service = human_feedback_service or HumanFeedbackService()
         self.tool_broker = tool_broker or ToolBroker(
             run_experiment_tool=RunExperimentTool(execution_service=self.execution_service),
+            run_robustness_probes_tool=RunRobustnessProbesTool(
+                execution_service=self.execution_service
+            ),
             propose_reward_tool=ProposeRewardTool(),
             summarize_run_artifacts_tool=SummarizeRunArtifactsTool(),
             validate_reward_program_tool=ValidateRewardProgramTool(),
@@ -366,9 +371,14 @@ class AgentExperimentService:
                 )
             )
             record = self._add_budget_usage(record, consumed_tokens=controller_tokens)
-            tool_result = self.tool_broker.execute_action(
+            broker_action = self._contextualize_action_for_broker(
                 record=record,
                 action=action,
+                candidates=candidates,
+            )
+            tool_result = self.tool_broker.execute_action(
+                record=record,
+                action=broker_action,
                 candidates=candidates,
                 runs=runs,
             )
@@ -494,6 +504,7 @@ class AgentExperimentService:
         decisions = self.list_decisions(record.experiment_id)
         feedback_requests = self.list_feedback_requests(record.experiment_id)
         feedback_entries = self.list_feedback(record.experiment_id)
+        robustness_assessments = self.list_robustness_assessments(record.experiment_id)
 
         if for_report and record.spec.outputs.report_detail == "summary":
             scored_candidates = [
@@ -519,6 +530,7 @@ class AgentExperimentService:
                     "decision_count": len(decisions),
                     "feedback_request_count": len(feedback_requests),
                     "feedback_entry_count": len(feedback_entries),
+                    "robustness_assessment_count": len(robustness_assessments),
                     "best_score": best_score,
                     "best_candidate_id": record.best_candidate_id,
                 },
@@ -538,6 +550,10 @@ class AgentExperimentService:
             "feedback_requests": feedback_requests,
             "feedback_entries": [
                 feedback.model_dump(mode="json") for feedback in feedback_entries
+            ],
+            "robustness_assessments": [
+                assessment.model_dump(mode="json")
+                for assessment in robustness_assessments
             ],
         }
         include_decisions = not for_report or record.spec.outputs.save_decision_trace
@@ -681,6 +697,26 @@ class AgentExperimentService:
             key=lambda item: str(item.get("created_at", "")),
         )
 
+    def list_robustness_assessments(
+        self,
+        experiment_id: str,
+    ) -> list[RobustnessAssessment]:
+        """Return robustness assessments for candidates in one experiment."""
+
+        candidate_ids = {
+            candidate.candidate_id for candidate in self.list_candidates(experiment_id)
+        }
+        assessments = self.repository.list_robustness_assessments()
+        filtered = [
+            assessment
+            for assessment in assessments
+            if assessment.candidate_id in candidate_ids
+        ]
+        return sorted(
+            filtered,
+            key=lambda item: (item.created_at, item.assessment_id),
+        )
+
     def _start_record(
         self,
         *,
@@ -787,6 +823,50 @@ class AgentExperimentService:
                 },
             )
             return record, True
+
+        if action.action_type == ActionType.RUN_ROBUSTNESS_PROBES:
+            run_payloads = result.payload.get("robustness_runs")
+            robustness_runs = (
+                [ExperimentRun.model_validate(item) for item in run_payloads]
+                if isinstance(run_payloads, list)
+                else []
+            )
+            for run in robustness_runs:
+                self.repository.save_experiment_run(run)
+                is_completed = run.status.value == "completed"
+                if is_completed:
+                    record = self._add_compute_usage(record=record, run=run)
+                self.repository.append_event(
+                    session_id=record.experiment_id,
+                    event_type=(
+                        "agent_experiment.robustness_run_completed"
+                        if is_completed
+                        else "agent_experiment.robustness_run_failed"
+                    ),
+                    payload={
+                        "run_id": run.run_id,
+                        "candidate_id": run.candidate_id,
+                        "variant_label": run.variant_label,
+                        "status": run.status.value,
+                        "artifact_refs": run.artifact_refs,
+                        "failure_reason": run.failure_reason,
+                    },
+                )
+            assessment_payload = result.payload.get("assessment")
+            if isinstance(assessment_payload, dict):
+                assessment = RobustnessAssessment.model_validate(assessment_payload)
+                self.repository.save_robustness_assessment(assessment)
+                self.repository.append_event(
+                    session_id=record.experiment_id,
+                    event_type="agent_experiment.robustness_assessed",
+                    payload={
+                        "assessment_id": assessment.assessment_id,
+                        "candidate_id": assessment.candidate_id,
+                        "risk_level": assessment.risk_level.value,
+                        "degradation_ratio": assessment.degradation_ratio,
+                    },
+                )
+            return record, len(robustness_runs) > 0
 
         if action.action_type == ActionType.REQUEST_HUMAN_FEEDBACK:
             request_id = result.payload.get("request_id")
@@ -904,6 +984,65 @@ class AgentExperimentService:
             }
         )
         return record.model_copy(update={"budget_ledger": ledger})
+
+    def _contextualize_action_for_broker(
+        self,
+        *,
+        record: AgentExperimentRecord,
+        action: ControllerAction,
+        candidates: list[RewardCandidate],
+    ) -> ControllerAction:
+        """Attach curated context to reward-proposal actions before tool execution."""
+
+        if action.action_type != ActionType.PROPOSE_REWARD:
+            return action
+
+        experiment_id = record.experiment_id
+        recent_decisions = [
+            {
+                "action_type": decision.action_type.value,
+                "rationale": decision.rationale,
+                "result_status": decision.result_status,
+                "result_summary": decision.result_summary,
+            }
+            for decision in self.list_decisions(experiment_id)[-8:]
+        ]
+        recent_feedback = [
+            {
+                "candidate_id": feedback.candidate_id,
+                "comment": feedback.comment,
+                "score": feedback.score,
+                "created_at": feedback.created_at.isoformat(),
+            }
+            for feedback in self.list_feedback(experiment_id)[-5:]
+        ]
+        recent_robustness = [
+            {
+                "candidate_id": assessment.candidate_id,
+                "risk_level": assessment.risk_level.value,
+                "degradation_ratio": assessment.degradation_ratio,
+                "risk_notes": assessment.risk_notes,
+                "created_at": assessment.created_at.isoformat(),
+            }
+            for assessment in self.list_robustness_assessments(experiment_id)[-5:]
+        ]
+        candidate_history = [
+            {
+                "candidate_id": candidate.candidate_id,
+                "iteration_index": candidate.iteration_index,
+                "aggregate_score": candidate.aggregate_score,
+                "change_summary": candidate.change_summary,
+            }
+            for candidate in sorted(candidates, key=lambda item: item.iteration_index)[-12:]
+        ]
+        contextual_input = {
+            **action.action_input,
+            "recent_decision_context": recent_decisions,
+            "recent_feedback_context": recent_feedback,
+            "recent_robustness_context": recent_robustness,
+            "candidate_history_context": candidate_history,
+        }
+        return action.model_copy(update={"action_input": contextual_input})
 
     def _save_decision(
         self,
