@@ -1,0 +1,623 @@
+{
+  "comparison": {
+    "main_vs_previous_openai": {
+      "best_score_delta": -33.29816194780136,
+      "failed_tool_count_delta": -1,
+      "stop_reason": {
+        "main": "plateau",
+        "previous": "manual"
+      }
+    },
+    "main_vs_smoke": {
+      "best_score_delta": -33.509212684434374,
+      "compare_count_delta": 2,
+      "evaluation_episodes_delta": 70,
+      "llm_openai_decisions_delta": 5,
+      "probe_count_delta": 1,
+      "training_timesteps_delta": 132096
+    }
+  },
+  "main_run": {
+    "best_score": 102.00078520510027,
+    "bottom_candidates": [
+      {
+        "candidate_id": "cand_0_baseline",
+        "env_return_mean": 102.00078520510027,
+        "evaluation_episodes_consumed": 7,
+        "reflection_checkpoint_count": 3,
+        "score": 102.00078520510027,
+        "shaped_return_mean": 101.99955301933417,
+        "total_timesteps": 12288,
+        "variant_label": "baseline_measurement"
+      },
+      {
+        "candidate_id": "cand-eccee4-002",
+        "env_return_mean": 16.458473349718847,
+        "evaluation_episodes_consumed": 14,
+        "reflection_checkpoint_count": 3,
+        "score": 16.458473349718847,
+        "shaped_return_mean": 16.456305632982364,
+        "total_timesteps": 24576,
+        "variant_label": "default"
+      },
+      {
+        "candidate_id": "cand-eccee4-001",
+        "env_return_mean": -198.33316381073737,
+        "evaluation_episodes_consumed": 7,
+        "reflection_checkpoint_count": 3,
+        "score": -198.33316381073737,
+        "shaped_return_mean": -198.334831274684,
+        "total_timesteps": 12288,
+        "variant_label": "risk_aware"
+      }
+    ],
+    "budget_used": {
+      "api_input_tokens": 12809,
+      "api_output_tokens": 9305,
+      "api_usd": 0.0,
+      "evaluation_episodes": 91,
+      "training_timesteps": 159744
+    },
+    "budget_utilization_pct": {
+      "api_input_tokens": 0.36597142857142856,
+      "api_output_tokens": 1.163125,
+      "evaluation_episodes": 28.4375,
+      "training_timesteps": 10.6496
+    },
+    "compare_count": 2,
+    "compare_ranking_count": 2,
+    "decision_action_counts": {
+      "request_tool": 9,
+      "stop": 1
+    },
+    "decision_count": 10,
+    "decision_source_counts": {
+      "heuristic": 5,
+      "llm_openai": 5
+    },
+    "experiment_count": 3,
+    "experiment_score_stats": {
+      "count": 3,
+      "max": 102.00078520510027,
+      "mean": -26.624635085306085,
+      "min": -198.33316381073737,
+      "range": 300.3339490158377,
+      "stdev": 126.33879295286418
+    },
+    "experiment_variant_counts": {
+      "baseline_measurement": 1,
+      "default": 1,
+      "risk_aware": 1
+    },
+    "export_payload_summary": {
+      "best_score": 102.00078520510027,
+      "decision_count": 8,
+      "present": true,
+      "tool_result_count": 8
+    },
+    "failed_tool_count": 0,
+    "failed_tools": [],
+    "per_experiment_eval_episode_stats": {
+      "count": 3,
+      "max": 14,
+      "mean": 9.333333333333334,
+      "min": 7
+    },
+    "per_experiment_timesteps_stats": {
+      "count": 3,
+      "max": 24576,
+      "mean": 16384,
+      "min": 12288
+    },
+    "planner_feedback_summary": {
+      "by_failure_type": {
+        "parse_error": 1,
+        "request_failed": 17,
+        "schema_validation_error": 1
+      },
+      "failure_count": 19
+    },
+    "planner_validation_failed_event_count": 19,
+    "probe_count": 3,
+    "probe_degradation_ratio_stats": {
+      "count": 3,
+      "max": 5.7864,
+      "mean": 2.6052333333333335,
+      "min": 0.0
+    },
+    "probe_risk_level_counts": {
+      "high": 2,
+      "low": 1
+    },
+    "probe_robustness_bonus_stats": {
+      "count": 3,
+      "max": 0.05,
+      "mean": -0.10333333333333333,
+      "min": -0.18
+    },
+    "probe_variant_env_return_stats": {
+      "dynamics_shift": {
+        "count": 3,
+        "max": 127.4596182246175,
+        "mean": 77.75207745518438,
+        "min": 33.48475432985842
+      },
+      "observation_dropout": {
+        "count": 3,
+        "max": 229.33775733768204,
+        "mean": -21.252085207790014,
+        "min": -444.2917658310243
+      },
+      "reward_delay": {
+        "count": 3,
+        "max": 135.65037926854833,
+        "mean": -102.77190276380243,
+        "min": -577.786402987279
+      }
+    },
+    "probe_variant_score_stats": {
+      "dynamics_shift": {
+        "count": 3,
+        "max": 127.4596182246175,
+        "mean": 77.75207745518438,
+        "min": 33.48475432985842
+      },
+      "observation_dropout": {
+        "count": 3,
+        "max": 229.33775733768204,
+        "mean": -21.252085207790014,
+        "min": -444.2917658310243
+      },
+      "reward_delay": {
+        "count": 3,
+        "max": 135.65037926854833,
+        "mean": -102.77190276380243,
+        "min": -577.786402987279
+      }
+    },
+    "reflection_checkpoint_stats": {
+      "count": 3,
+      "max": 3,
+      "mean": 3,
+      "min": 3
+    },
+    "run_id": "agentrun-fd5ad2eccee4",
+    "status": "completed",
+    "stop_reason": "plateau",
+    "tool_result_count": 9,
+    "top_candidates": [
+      {
+        "candidate_id": "cand_0_baseline",
+        "env_return_mean": 102.00078520510027,
+        "evaluation_episodes_consumed": 7,
+        "reflection_checkpoint_count": 3,
+        "score": 102.00078520510027,
+        "shaped_return_mean": 101.99955301933417,
+        "total_timesteps": 12288,
+        "variant_label": "baseline_measurement"
+      },
+      {
+        "candidate_id": "cand-eccee4-002",
+        "env_return_mean": 16.458473349718847,
+        "evaluation_episodes_consumed": 14,
+        "reflection_checkpoint_count": 3,
+        "score": 16.458473349718847,
+        "shaped_return_mean": 16.456305632982364,
+        "total_timesteps": 24576,
+        "variant_label": "default"
+      },
+      {
+        "candidate_id": "cand-eccee4-001",
+        "env_return_mean": -198.33316381073737,
+        "evaluation_episodes_consumed": 7,
+        "reflection_checkpoint_count": 3,
+        "score": -198.33316381073737,
+        "shaped_return_mean": -198.334831274684,
+        "total_timesteps": 12288,
+        "variant_label": "risk_aware"
+      }
+    ],
+    "turn_count": 10
+  },
+  "previous_openai_run": {
+    "best_score": 135.29894715290163,
+    "bottom_candidates": [
+      {
+        "candidate_id": "cand-ecd3a6-003",
+        "env_return_mean": 135.29894715290163,
+        "evaluation_episodes_consumed": 7,
+        "reflection_checkpoint_count": 3,
+        "score": 135.29894715290163,
+        "shaped_return_mean": 135.29778902345063,
+        "total_timesteps": 12288,
+        "variant_label": "risk_aware"
+      },
+      {
+        "candidate_id": "cand_0_baseline",
+        "env_return_mean": 102.00078520510027,
+        "evaluation_episodes_consumed": 7,
+        "reflection_checkpoint_count": 3,
+        "score": 102.00078520510027,
+        "shaped_return_mean": 101.99955301933417,
+        "total_timesteps": 12288,
+        "variant_label": "baseline"
+      },
+      {
+        "candidate_id": "cand-ecd3a6-002",
+        "env_return_mean": 16.458473349718847,
+        "evaluation_episodes_consumed": 14,
+        "reflection_checkpoint_count": 3,
+        "score": 16.458473349718847,
+        "shaped_return_mean": 16.456305632982364,
+        "total_timesteps": 24576,
+        "variant_label": "default"
+      },
+      {
+        "candidate_id": "cand-ecd3a6-001",
+        "env_return_mean": -198.33316381073737,
+        "evaluation_episodes_consumed": 7,
+        "reflection_checkpoint_count": 3,
+        "score": -198.33316381073737,
+        "shaped_return_mean": -198.334831274684,
+        "total_timesteps": 12288,
+        "variant_label": "risk_aware"
+      }
+    ],
+    "budget_used": {
+      "api_input_tokens": 19528,
+      "api_output_tokens": 9436,
+      "api_usd": 0.0,
+      "evaluation_episodes": 98,
+      "training_timesteps": 172032
+    },
+    "budget_utilization_pct": {
+      "api_input_tokens": 0.5579428571428572,
+      "api_output_tokens": 1.1795,
+      "evaluation_episodes": 30.625,
+      "training_timesteps": 11.4688
+    },
+    "compare_count": 2,
+    "compare_ranking_count": 2,
+    "decision_action_counts": {
+      "request_tool": 10,
+      "stop": 1
+    },
+    "decision_count": 11,
+    "decision_source_counts": {
+      "heuristic": 8,
+      "llm_openai": 3
+    },
+    "experiment_count": 4,
+    "experiment_score_stats": {
+      "count": 4,
+      "max": 135.29894715290163,
+      "mean": 13.856260474245843,
+      "min": -198.33316381073737,
+      "range": 333.632110963639,
+      "stdev": 129.95086251926176
+    },
+    "experiment_variant_counts": {
+      "baseline": 1,
+      "default": 1,
+      "risk_aware": 2
+    },
+    "export_payload_summary": {
+      "best_score": null,
+      "decision_count": null,
+      "present": false,
+      "tool_result_count": null
+    },
+    "failed_tool_count": 1,
+    "failed_tools": [
+      {
+        "error": "invalid run_probe_suite arguments: file not found: objective.txt",
+        "status": "rejected",
+        "tool_name": "run_probe_suite"
+      }
+    ],
+    "per_experiment_eval_episode_stats": {
+      "count": 4,
+      "max": 14,
+      "mean": 8.75,
+      "min": 7
+    },
+    "per_experiment_timesteps_stats": {
+      "count": 4,
+      "max": 24576,
+      "mean": 15360,
+      "min": 12288
+    },
+    "planner_feedback_summary": {
+      "by_failure_type": {
+        "request_failed": 15,
+        "schema_validation_error": 7
+      },
+      "failure_count": 22
+    },
+    "planner_validation_failed_event_count": 22,
+    "probe_count": 3,
+    "probe_degradation_ratio_stats": {
+      "count": 3,
+      "max": 5.7864,
+      "mean": 2.6052333333333335,
+      "min": 0.0
+    },
+    "probe_risk_level_counts": {
+      "high": 2,
+      "low": 1
+    },
+    "probe_robustness_bonus_stats": {
+      "count": 3,
+      "max": 0.05,
+      "mean": -0.10333333333333333,
+      "min": -0.18
+    },
+    "probe_variant_env_return_stats": {
+      "dynamics_shift": {
+        "count": 3,
+        "max": 127.4596182246175,
+        "mean": 77.75207745518438,
+        "min": 33.48475432985842
+      },
+      "observation_dropout": {
+        "count": 3,
+        "max": 229.33775733768204,
+        "mean": -21.252085207790014,
+        "min": -444.2917658310243
+      },
+      "reward_delay": {
+        "count": 3,
+        "max": 135.65037926854833,
+        "mean": -102.77190276380243,
+        "min": -577.786402987279
+      }
+    },
+    "probe_variant_score_stats": {
+      "dynamics_shift": {
+        "count": 3,
+        "max": 127.4596182246175,
+        "mean": 77.75207745518438,
+        "min": 33.48475432985842
+      },
+      "observation_dropout": {
+        "count": 3,
+        "max": 229.33775733768204,
+        "mean": -21.252085207790014,
+        "min": -444.2917658310243
+      },
+      "reward_delay": {
+        "count": 3,
+        "max": 135.65037926854833,
+        "mean": -102.77190276380243,
+        "min": -577.786402987279
+      }
+    },
+    "reflection_checkpoint_stats": {
+      "count": 4,
+      "max": 3,
+      "mean": 3,
+      "min": 3
+    },
+    "run_id": "agentrun-205904ecd3a6",
+    "status": "completed",
+    "stop_reason": "manual",
+    "tool_result_count": 10,
+    "top_candidates": [
+      {
+        "candidate_id": "cand-ecd3a6-003",
+        "env_return_mean": 135.29894715290163,
+        "evaluation_episodes_consumed": 7,
+        "reflection_checkpoint_count": 3,
+        "score": 135.29894715290163,
+        "shaped_return_mean": 135.29778902345063,
+        "total_timesteps": 12288,
+        "variant_label": "risk_aware"
+      },
+      {
+        "candidate_id": "cand_0_baseline",
+        "env_return_mean": 102.00078520510027,
+        "evaluation_episodes_consumed": 7,
+        "reflection_checkpoint_count": 3,
+        "score": 102.00078520510027,
+        "shaped_return_mean": 101.99955301933417,
+        "total_timesteps": 12288,
+        "variant_label": "baseline"
+      },
+      {
+        "candidate_id": "cand-ecd3a6-002",
+        "env_return_mean": 16.458473349718847,
+        "evaluation_episodes_consumed": 14,
+        "reflection_checkpoint_count": 3,
+        "score": 16.458473349718847,
+        "shaped_return_mean": 16.456305632982364,
+        "total_timesteps": 24576,
+        "variant_label": "default"
+      },
+      {
+        "candidate_id": "cand-ecd3a6-001",
+        "env_return_mean": -198.33316381073737,
+        "evaluation_episodes_consumed": 7,
+        "reflection_checkpoint_count": 3,
+        "score": -198.33316381073737,
+        "shaped_return_mean": -198.334831274684,
+        "total_timesteps": 12288,
+        "variant_label": "risk_aware"
+      }
+    ],
+    "turn_count": 11
+  },
+  "smoke_run": {
+    "best_score": 135.50999788953465,
+    "bottom_candidates": [
+      {
+        "candidate_id": "cand-6380c6-000",
+        "env_return_mean": 135.50999788953465,
+        "evaluation_episodes_consumed": 7,
+        "reflection_checkpoint_count": 3,
+        "score": 135.50999788953465,
+        "shaped_return_mean": 135.50446773002795,
+        "total_timesteps": 6144,
+        "variant_label": "default"
+      },
+      {
+        "candidate_id": "cand-6380c6-001",
+        "env_return_mean": -298.53766333784563,
+        "evaluation_episodes_consumed": 2,
+        "reflection_checkpoint_count": 0,
+        "score": -298.53766333784563,
+        "shaped_return_mean": -298.541369824487,
+        "total_timesteps": 3072,
+        "variant_label": "risk_aware"
+      }
+    ],
+    "budget_used": {
+      "api_input_tokens": 0,
+      "api_output_tokens": 0,
+      "api_usd": 0.0,
+      "evaluation_episodes": 21,
+      "training_timesteps": 27648
+    },
+    "budget_utilization_pct": {
+      "api_input_tokens": 0.0,
+      "api_output_tokens": 0.0,
+      "evaluation_episodes": 35.0,
+      "training_timesteps": 23.04
+    },
+    "compare_count": 0,
+    "compare_ranking_count": 0,
+    "decision_action_counts": {
+      "request_tool": 4
+    },
+    "decision_count": 4,
+    "decision_source_counts": {
+      "heuristic": 4
+    },
+    "experiment_count": 2,
+    "experiment_score_stats": {
+      "count": 2,
+      "max": 135.50999788953465,
+      "mean": -81.51383272415549,
+      "min": -298.53766333784563,
+      "range": 434.0476612273803,
+      "stdev": 217.02383061369014
+    },
+    "experiment_variant_counts": {
+      "default": 1,
+      "risk_aware": 1
+    },
+    "export_payload_summary": {
+      "best_score": null,
+      "decision_count": null,
+      "present": false,
+      "tool_result_count": null
+    },
+    "failed_tool_count": 0,
+    "failed_tools": [],
+    "per_experiment_eval_episode_stats": {
+      "count": 2,
+      "max": 7,
+      "mean": 4.5,
+      "min": 2
+    },
+    "per_experiment_timesteps_stats": {
+      "count": 2,
+      "max": 6144,
+      "mean": 4608,
+      "min": 3072
+    },
+    "planner_feedback_summary": {
+      "by_failure_type": {},
+      "failure_count": 0
+    },
+    "planner_validation_failed_event_count": 0,
+    "probe_count": 2,
+    "probe_degradation_ratio_stats": {
+      "count": 2,
+      "max": 1.96,
+      "mean": 0.98,
+      "min": 0.0
+    },
+    "probe_risk_level_counts": {
+      "high": 2
+    },
+    "probe_robustness_bonus_stats": {
+      "count": 2,
+      "max": -0.18,
+      "mean": -0.18,
+      "min": -0.18
+    },
+    "probe_variant_env_return_stats": {
+      "dynamics_shift": {
+        "count": 2,
+        "max": 180.00194040334654,
+        "mean": 94.56445187682526,
+        "min": 9.126963350303981
+      },
+      "observation_dropout": {
+        "count": 2,
+        "max": 10.872577824908582,
+        "mean": -210.27042766349192,
+        "min": -431.41343315189243
+      },
+      "reward_delay": {
+        "count": 2,
+        "max": -410.2599140608262,
+        "mean": -526.7790127545072,
+        "min": -643.2981114481881
+      }
+    },
+    "probe_variant_score_stats": {
+      "dynamics_shift": {
+        "count": 2,
+        "max": 180.00194040334654,
+        "mean": 94.56445187682526,
+        "min": 9.126963350303981
+      },
+      "observation_dropout": {
+        "count": 2,
+        "max": 10.872577824908582,
+        "mean": -210.27042766349192,
+        "min": -431.41343315189243
+      },
+      "reward_delay": {
+        "count": 2,
+        "max": -410.2599140608262,
+        "mean": -526.7790127545072,
+        "min": -643.2981114481881
+      }
+    },
+    "reflection_checkpoint_stats": {
+      "count": 2,
+      "max": 3,
+      "mean": 1.5,
+      "min": 0
+    },
+    "run_id": "agentrun-1c94c76380c6",
+    "status": "completed",
+    "stop_reason": "turn_cap",
+    "tool_result_count": 4,
+    "top_candidates": [
+      {
+        "candidate_id": "cand-6380c6-000",
+        "env_return_mean": 135.50999788953465,
+        "evaluation_episodes_consumed": 7,
+        "reflection_checkpoint_count": 3,
+        "score": 135.50999788953465,
+        "shaped_return_mean": 135.50446773002795,
+        "total_timesteps": 6144,
+        "variant_label": "default"
+      },
+      {
+        "candidate_id": "cand-6380c6-001",
+        "env_return_mean": -298.53766333784563,
+        "evaluation_episodes_consumed": 2,
+        "reflection_checkpoint_count": 0,
+        "score": -298.53766333784563,
+        "shaped_return_mean": -298.541369824487,
+        "total_timesteps": 3072,
+        "variant_label": "risk_aware"
+      }
+    ],
+    "turn_count": 4
+  }
+}
