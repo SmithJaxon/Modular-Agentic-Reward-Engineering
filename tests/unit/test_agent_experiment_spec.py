@@ -158,7 +158,9 @@ def test_spec_defaults_to_enforcing_progress_before_stop() -> None:
 
     spec = AgentExperimentSpec.model_validate(_minimal_valid_payload())
 
+    assert spec.initialization.mode.value == "human"
     assert spec.agent_loop.enforce_progress_before_stop is True
+    assert spec.execution.comparison.enabled is False
 
 
 def test_spec_allows_disabling_progress_before_stop_enforcement() -> None:
@@ -174,6 +176,48 @@ def test_spec_allows_disabling_progress_before_stop_enforcement() -> None:
     spec = AgentExperimentSpec.model_validate(payload)
 
     assert spec.agent_loop.enforce_progress_before_stop is False
+
+
+def test_spec_accepts_default_initialization_mode() -> None:
+    """Spec should accept explicit default initialization mode."""
+
+    payload = _minimal_valid_payload()
+    payload["initialization"] = {"mode": "default"}
+
+    spec = AgentExperimentSpec.model_validate(payload)
+
+    assert spec.initialization.mode.value == "default"
+
+
+def test_spec_accepts_default_init_seed_candidate_count() -> None:
+    """Spec should accept explicit default-init seed candidate count."""
+
+    payload = _minimal_valid_payload()
+    payload["initialization"] = {
+        "mode": "default",
+        "default_seed_candidate_count": 4,
+    }
+
+    spec = AgentExperimentSpec.model_validate(payload)
+
+    assert spec.initialization.mode.value == "default"
+    assert spec.initialization.default_seed_candidate_count == 4
+
+
+def test_spec_rejects_default_seed_candidate_count_for_human_init() -> None:
+    """Human init mode should reject default-seed candidate controls."""
+
+    payload = _minimal_valid_payload()
+    payload["initialization"] = {
+        "mode": "human",
+        "default_seed_candidate_count": 2,
+    }
+
+    with pytest.raises(
+        ValueError,
+        match="initialization.default_seed_candidate_count requires initialization.mode='default'",
+    ):
+        AgentExperimentSpec.model_validate(payload)
 
 
 def test_spec_accepts_ppo_parallel_env_and_device_controls() -> None:

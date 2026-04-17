@@ -7,9 +7,11 @@ Last Updated: 2026-04-16
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Literal, cast
 from uuid import uuid4
 
 from rewardlab.agentic.benchmarking import (
@@ -19,6 +21,10 @@ from rewardlab.agentic.benchmarking import (
 )
 from rewardlab.agentic.contracts import ControllerAction, ToolResult
 from rewardlab.agentic.controller import ControllerAgent, ControllerContext
+from rewardlab.agentic.eureka_metrics import (
+    compute_eureka_comparison_metrics,
+    compute_reward_hacking_metrics,
+)
 from rewardlab.agentic.policy_engine import PolicyEngine
 from rewardlab.agentic.spec_loader import load_experiment_spec
 from rewardlab.agentic.tool_broker import ToolBroker
@@ -38,7 +44,16 @@ from rewardlab.experiments.gymnasium_runner import (
     GymnasiumExperimentRunner,
     HumanoidPpoEvaluationConfig,
 )
+from rewardlab.experiments.reward_program import load_reward_program
 from rewardlab.feedback.human_feedback_service import HumanFeedbackService
+from rewardlab.llm.openai_client import OpenAIClient
+from rewardlab.orchestrator.reward_designer import (
+    DeterministicRewardDesigner,
+    OpenAIRewardDesigner,
+    RewardDesignConfig,
+    RewardDesignerMode,
+    RewardDesignRequest,
+)
 from rewardlab.orchestrator.session_service import (
     ServicePaths,
     resolve_control_mode_from_environment,
@@ -51,6 +66,7 @@ from rewardlab.schemas.agent_experiment import (
     AgentExperimentRecord,
     AgentExperimentSpec,
     AgentExperimentStatus,
+    InitializationMode,
 )
 from rewardlab.schemas.experiment_run import ExecutionMode, ExperimentRun, RunStatus, RunType
 from rewardlab.schemas.feedback_entry import FeedbackEntry
@@ -239,7 +255,11 @@ class AgentExperimentService:
         """Start and execute an autonomous experiment loop to completion/pause."""
 
         spec = load_experiment_spec(spec_file)
-        record = self._start_record(spec=spec, experiment_id=experiment_id)
+        record = self._start_record(
+            spec=spec,
+            experiment_id=experiment_id,
+            spec_file=spec_file,
+        )
         record, report_path = self._execute_loop(record=record)
         return StartedAgentExperiment(
             experiment_id=record.experiment_id,
@@ -319,7 +339,7 @@ class AgentExperimentService:
             if isinstance(best_value, str):
                 best_experiment_id = best_value
             score_value = overview.get("best_score")
-            if isinstance(score_value, (int, float)):
+            if isinstance(score_value, int | float):
                 best_score = float(score_value)
             completed_value = overview.get("completed_count")
             if isinstance(completed_value, int):
@@ -773,6 +793,7 @@ class AgentExperimentService:
         *,
         spec: AgentExperimentSpec,
         experiment_id: str | None,
+        spec_file: Path | None = None,
     ) -> AgentExperimentRecord:
         """Create and persist a new running experiment with baseline candidate."""
 
@@ -781,45 +802,161 @@ class AgentExperimentService:
         if existing is not None:
             return existing
 
-        baseline_path = Path(spec.baseline_reward.path)
-        baseline_source = baseline_path.read_text(encoding="utf-8").strip()
-        if not baseline_source:
-            raise ValueError("baseline reward source is blank")
+        init_mode = spec.initialization.mode
+        seed_candidates: list[RewardCandidate]
+        if init_mode == InitializationMode.HUMAN:
+            baseline_path = Path(spec.baseline_reward.path)
+            baseline_source = baseline_path.read_text(encoding="utf-8").strip()
+            if not baseline_source:
+                raise ValueError("baseline reward source is blank")
+            seed_candidates = [
+                RewardCandidate(
+                    candidate_id=f"{actual_id}-candidate-000",
+                    session_id=actual_id,
+                    iteration_index=0,
+                    reward_definition=baseline_source,
+                    change_summary="Baseline candidate loaded from experiment spec reward file.",
+                    aggregate_score=None,
+                )
+            ]
+        else:
+            seed_candidates = self._build_default_init_seed_candidates(
+                spec=spec,
+                experiment_id=actual_id,
+            )
+            if len(seed_candidates) == 0:
+                raise ValueError("default initialization did not produce any seed candidates")
+
         now = datetime.now(UTC)
+        seed_candidate_count = len(seed_candidates)
         record = AgentExperimentRecord(
             experiment_id=actual_id,
             status=AgentExperimentStatus.RUNNING,
             spec=spec,
             created_at=now,
             started_at=now,
-            best_candidate_id=f"{actual_id}-candidate-000",
+            best_candidate_id=seed_candidates[0].candidate_id,
             metadata={
                 "failed_actions": 0,
                 "non_progress_actions": 0,
                 "control_mode": resolve_control_mode_from_environment().value,
                 "runtime_dir": spec.outputs.runtime_dir,
+                "init_mode": init_mode.value,
+                "init_seed_candidate_count": seed_candidate_count,
+                "spec_file_stem": (
+                    spec_file.stem if spec_file is not None else spec.experiment_name
+                ),
             },
             budget_ledger=AgentBudgetLedger(),
         )
-        baseline = RewardCandidate(
-            candidate_id=f"{actual_id}-candidate-000",
-            session_id=actual_id,
-            iteration_index=0,
-            reward_definition=baseline_source,
-            change_summary="Baseline candidate loaded from experiment spec reward file.",
-            aggregate_score=None,
-        )
         self._save_record(record)
-        self._save_candidate(baseline)
+        for candidate in seed_candidates:
+            self._save_candidate(candidate)
         self.repository.append_event(
             session_id=actual_id,
             event_type="agent_experiment.started",
             payload={
-                "baseline_candidate_id": baseline.candidate_id,
+                "baseline_candidate_id": seed_candidates[0].candidate_id,
+                "seed_candidate_count": seed_candidate_count,
                 "environment_id": spec.environment.id,
+                "init_mode": init_mode.value,
             },
         )
         return record
+
+    def _build_default_init_seed_candidates(
+        self,
+        *,
+        spec: AgentExperimentSpec,
+        experiment_id: str,
+    ) -> list[RewardCandidate]:
+        """Generate default-init seed candidates using the reward designer stack."""
+
+        entrypoint_name = spec.baseline_reward.entrypoint_name
+        seed_template = _default_initial_reward_source(entrypoint_name=entrypoint_name)
+        seed_count = spec.initialization.default_seed_candidate_count or 1
+        seed_count = max(seed_count, 1)
+
+        fallback_designer = DeterministicRewardDesigner()
+        model_cfg = spec.models.reward_designer
+        openai_client = OpenAIClient()
+        if openai_client.has_credentials:
+            designer: OpenAIRewardDesigner | DeterministicRewardDesigner = OpenAIRewardDesigner(
+                openai_client=openai_client,
+                config=RewardDesignConfig(
+                    mode=RewardDesignerMode.OPENAI,
+                    model=model_cfg.model,
+                    reasoning_effort=_coerce_reasoning_effort(model_cfg.reasoning_effort),
+                    max_tokens=min(
+                        model_cfg.max_completion_tokens,
+                        spec.budgets.api.max_completion_tokens_per_call,
+                    ),
+                ),
+            )
+            designer_label = "openai"
+        else:
+            designer = fallback_designer
+            designer_label = "deterministic"
+
+        allowed_parameter_names = _resolve_default_init_allowed_parameter_names(
+            spec=spec,
+            seed_template_source=seed_template,
+        )
+        anchor_candidate = RewardCandidate(
+            candidate_id=f"{experiment_id}-candidate-anchor",
+            session_id=experiment_id,
+            iteration_index=0,
+            reward_definition=seed_template,
+            change_summary="Default-init internal anchor candidate.",
+            aggregate_score=None,
+        )
+        seeds: list[RewardCandidate] = []
+        for index in range(seed_count):
+            sample_number = index + 1
+            request = RewardDesignRequest(
+                session_id=experiment_id,
+                objective_text=spec.objective,
+                environment_id=spec.environment.id,
+                environment_backend=spec.environment.backend,
+                current_candidate=anchor_candidate,
+                next_iteration_index=index,
+                prior_candidates=tuple([anchor_candidate, *seeds]),
+                allowed_parameter_names=allowed_parameter_names,
+            )
+
+            reward_definition = seed_template
+            mode_summary = f"{designer_label}_fallback_template"
+            try:
+                design_result = designer.design_next_candidate(request)
+                reward_definition = design_result.reward_definition.strip()
+                mode_summary = designer_label
+            except Exception:
+                try:
+                    design_result = fallback_designer.design_next_candidate(request)
+                    reward_definition = design_result.reward_definition.strip()
+                    mode_summary = "deterministic_fallback"
+                except Exception:
+                    reward_definition = seed_template
+                    mode_summary = "template_fallback"
+
+            if not reward_definition:
+                reward_definition = seed_template
+                mode_summary = "template_fallback"
+
+            seeds.append(
+                RewardCandidate(
+                    candidate_id=f"{experiment_id}-candidate-{index:03d}",
+                    session_id=experiment_id,
+                    iteration_index=0,
+                    reward_definition=reward_definition,
+                    change_summary=(
+                        "Eureka-style default-init bootstrap seed "
+                        f"({sample_number}/{seed_count}, source={mode_summary})."
+                    ),
+                    aggregate_score=None,
+                )
+            )
+        return seeds
 
     def _apply_tool_result(
         self,
@@ -1279,7 +1416,10 @@ class AgentExperimentService:
         candidates = self.list_candidates(record.experiment_id)
         if len(candidates) == 0:
             return record
-        best_candidate = _resolve_best_candidate_for_final_eval(record=record, candidates=candidates)
+        best_candidate = _resolve_best_candidate_for_final_eval(
+            record=record,
+            candidates=candidates,
+        )
         if best_candidate is None:
             return record
 
@@ -1384,13 +1524,322 @@ class AgentExperimentService:
         )
         return record
 
+    def _build_comparison_metrics_payload(
+        self,
+        *,
+        record: AgentExperimentRecord,
+    ) -> tuple[dict[str, object], AgentExperimentRecord]:
+        """Build/ensure Eureka-style comparison metrics and probe-based hacking metrics."""
+
+        comparison_cfg = record.spec.execution.comparison
+        base_payload: dict[str, object] = {
+            "status": "disabled" if not comparison_cfg.enabled else "unavailable",
+            "init_mode": record.spec.initialization.mode.value,
+            "hns": None,
+            "reward_hacking": None,
+        }
+        if not comparison_cfg.enabled:
+            return base_payload, record
+
+        if record.status != AgentExperimentStatus.COMPLETED:
+            return {
+                **base_payload,
+                "reason": "comparison metrics run only for completed experiments",
+            }, record
+
+        candidates = self.list_candidates(record.experiment_id)
+        if len(candidates) == 0:
+            return {**base_payload, "reason": "no candidates available"}, record
+        best_candidate = _resolve_best_candidate_for_final_eval(
+            record=record,
+            candidates=candidates,
+        )
+        if best_candidate is None:
+            return {**base_payload, "reason": "no best candidate available"}, record
+        runs = self.list_runs(record.experiment_id)
+        has_performance_evidence = any(
+            run.candidate_id == best_candidate.candidate_id
+            and run.run_type == RunType.PERFORMANCE
+            and run.status == RunStatus.COMPLETED
+            for run in runs
+        )
+        if not has_performance_evidence:
+            return {
+                **base_payload,
+                "reason": "no completed performance run found for best candidate",
+            }, record
+
+        resolved_human_path = _resolve_human_reward_path(record=record)
+        resolved_sparse_path = _resolve_sparse_reward_path(record=record)
+        if resolved_human_path is None or not resolved_human_path.exists():
+            return {
+                **base_payload,
+                "reason": "human baseline reward path is missing or does not exist",
+            }, record
+        if resolved_sparse_path is None or not resolved_sparse_path.exists():
+            return {
+                **base_payload,
+                "reason": "sparse baseline reward path is missing or does not exist",
+            }, record
+
+        spec = record.spec
+        rollout = spec.execution.rollout
+        execution_service = _resolve_execution_service(
+            default_service=self.execution_service,
+            runtime_dir=Path(spec.outputs.runtime_dir),
+        )
+        runner = _build_runner_for_spec(
+            spec=spec,
+            total_timesteps_override=comparison_cfg.total_timesteps_override,
+            eval_runs_override=comparison_cfg.eval_runs_override,
+        )
+        run_cache = {run.run_id: run for run in runs}
+        baseline_entrypoint = spec.baseline_reward.entrypoint_name
+        comparison_entrypoint = comparison_cfg.entrypoint_name
+        max_episode_steps = rollout.max_episode_steps if rollout is not None else None
+
+        human_candidate = RewardCandidate(
+            candidate_id=f"{record.experiment_id}-comparison-human",
+            session_id=record.experiment_id,
+            iteration_index=0,
+            reward_definition=resolved_human_path.read_text(encoding="utf-8"),
+            change_summary="Human baseline reward used for HNS comparison.",
+            aggregate_score=None,
+        )
+        sparse_candidate = RewardCandidate(
+            candidate_id=f"{record.experiment_id}-comparison-sparse",
+            session_id=record.experiment_id,
+            iteration_index=0,
+            reward_definition=resolved_sparse_path.read_text(encoding="utf-8"),
+            change_summary="Sparse baseline reward used for HNS comparison.",
+            aggregate_score=None,
+        )
+        score_blocks: dict[str, dict[str, object]] = {}
+        record, score_blocks["method"] = self._ensure_comparison_run_block(
+            record=record,
+            run_cache=run_cache,
+            execution_service=execution_service,
+            runner=runner,
+            candidate=best_candidate,
+            label="method",
+            run_count=comparison_cfg.num_eval_runs,
+            seed_start=comparison_cfg.seed_start,
+            entrypoint_name=baseline_entrypoint,
+            max_episode_steps=max_episode_steps,
+        )
+        for label, candidate in (("human", human_candidate), ("sparse", sparse_candidate)):
+            record, score_blocks[label] = self._ensure_comparison_run_block(
+                record=record,
+                run_cache=run_cache,
+                execution_service=execution_service,
+                runner=runner,
+                candidate=candidate,
+                label=label,
+                run_count=comparison_cfg.num_eval_runs,
+                seed_start=comparison_cfg.seed_start,
+                entrypoint_name=comparison_entrypoint,
+                max_episode_steps=max_episode_steps,
+            )
+
+        method_scores = _score_list_from_block(score_blocks["method"])
+        human_scores = _score_list_from_block(score_blocks["human"])
+        sparse_scores = _score_list_from_block(score_blocks["sparse"])
+        if len(method_scores) == 0 or len(human_scores) == 0 or len(sparse_scores) == 0:
+            return {
+                **base_payload,
+                "reason": "comparison runs completed with insufficient score evidence",
+                "scores": score_blocks,
+            }, record
+
+        method_score = sum(method_scores) / len(method_scores)
+        human_score = sum(human_scores) / len(human_scores)
+        sparse_score = sum(sparse_scores) / len(sparse_scores)
+        try:
+            hns = compute_eureka_comparison_metrics(
+                method_score=method_score,
+                human_score=human_score,
+                sparse_score=sparse_score,
+                method_score_source="comparison.method.mean_score",
+                human_score_source="comparison.human.mean_score",
+                sparse_score_source="comparison.sparse.mean_score",
+            )
+        except ValueError as exc:
+            return {
+                **base_payload,
+                "reason": str(exc),
+                "scores": score_blocks,
+            }, record
+
+        record, probe_block = self._ensure_comparison_run_block(
+            record=record,
+            run_cache=run_cache,
+            execution_service=execution_service,
+            runner=runner,
+            candidate=best_candidate,
+            label="probe",
+            run_count=comparison_cfg.probe_run_count,
+            seed_start=comparison_cfg.probe_seed_start,
+            entrypoint_name=baseline_entrypoint,
+            max_episode_steps=max_episode_steps,
+        )
+        probe_scores = _score_list_from_block(probe_block)
+        hacking_payload: dict[str, object]
+        if len(probe_scores) > 0:
+            hacking = compute_reward_hacking_metrics(
+                method_score=method_score,
+                human_score=human_score,
+                sparse_score=sparse_score,
+                probe_scores=probe_scores,
+            )
+            hacking_payload = {
+                "probe_runs": probe_block,
+                "probe_count": hacking.probe_count,
+                "probe_min_score": hacking.probe_min_score,
+                "probe_mean_score": hacking.probe_mean_score,
+                "probe_below_sparse_rate": hacking.probe_below_sparse_rate,
+                "worst_score_degradation_ratio": hacking.worst_score_degradation_ratio,
+                "mean_score_degradation_ratio": hacking.mean_score_degradation_ratio,
+                "probe_min_human_normalized_score": hacking.probe_min_human_normalized_score,
+                "probe_mean_human_normalized_score": hacking.probe_mean_human_normalized_score,
+                "worst_human_normalized_drop": hacking.worst_human_normalized_drop,
+                "mean_human_normalized_drop": hacking.mean_human_normalized_drop,
+                "perils_relative_reward_function_performance": (
+                    hacking.perils_relative_reward_function_performance
+                ),
+                "perils_hacking_severity": hacking.perils_hacking_severity,
+                "hacking_risk_index": hacking.hacking_risk_index,
+                "hacking_risk_level": hacking.hacking_risk_level,
+            }
+        else:
+            hacking_payload = {
+                "status": "unavailable",
+                "reason": "probe runs did not produce any completed scores",
+                "probe_runs": probe_block,
+            }
+
+        return (
+            {
+                "status": "ok",
+                "init_mode": record.spec.initialization.mode.value,
+                "scores": score_blocks,
+                "hns": {
+                    "method_score": hns.method_score,
+                    "human_score": hns.human_score,
+                    "sparse_score": hns.sparse_score,
+                    "human_normalized_score": hns.human_normalized_score,
+                    "human_normalized_score_clipped": hns.human_normalized_score_clipped,
+                    "delta_vs_human_score": hns.delta_vs_human_score,
+                    "delta_vs_human_normalized": hns.delta_vs_human_normalized,
+                },
+                "reward_hacking": hacking_payload,
+            },
+            record,
+        )
+
+    def _ensure_comparison_run_block(
+        self,
+        *,
+        record: AgentExperimentRecord,
+        run_cache: dict[str, ExperimentRun],
+        execution_service: ExperimentExecutionService,
+        runner: GymnasiumExperimentRunner,
+        candidate: RewardCandidate,
+        label: str,
+        run_count: int,
+        seed_start: int,
+        entrypoint_name: str,
+        max_episode_steps: int | None,
+    ) -> tuple[AgentExperimentRecord, dict[str, object]]:
+        """Ensure one named comparison/probe block exists and return normalized scores."""
+
+        completed_scores: list[float] = []
+        run_ids: list[str] = []
+        failed_runs: list[str] = []
+        for run_index in range(run_count):
+            eval_seed = seed_start + run_index
+            run_id = f"{record.experiment_id}-comparison-{label}-{run_index + 1:03d}"
+            run_ids.append(run_id)
+            run = run_cache.get(run_id)
+            if run is None:
+                request = ExecutionRequest(
+                    run_id=run_id,
+                    backend=record.spec.environment.backend,
+                    environment_id=record.spec.environment.id,
+                    execution_mode=ExecutionMode.ACTUAL_BACKEND,
+                    variant_label=f"comparison_{label}_seed_{eval_seed}",
+                    seed=eval_seed,
+                    entrypoint_name=entrypoint_name,
+                    max_episode_steps=max_episode_steps,
+                )
+                result = execution_service.execute_candidate(
+                    candidate=candidate,
+                    request=request,
+                    runner=runner,
+                )
+                run = result.run
+                self.repository.save_experiment_run(run)
+                run_cache[run_id] = run
+                if run.status == RunStatus.COMPLETED:
+                    record = self._add_compute_usage(record=record, run=run)
+                    self.repository.append_event(
+                        session_id=record.experiment_id,
+                        event_type="agent_experiment.comparison_run_completed",
+                        payload={
+                            "run_id": run.run_id,
+                            "comparison_label": label,
+                            "candidate_id": candidate.candidate_id,
+                            "variant_label": run.variant_label,
+                        },
+                    )
+                else:
+                    self.repository.append_event(
+                        session_id=record.experiment_id,
+                        event_type="agent_experiment.comparison_run_failed",
+                        payload={
+                            "run_id": run.run_id,
+                            "comparison_label": label,
+                            "candidate_id": candidate.candidate_id,
+                            "variant_label": run.variant_label,
+                            "failure_reason": run.failure_reason,
+                        },
+                    )
+
+            if run.status == RunStatus.COMPLETED:
+                score = _score_from_run_metrics(run.metrics)
+                if score is not None:
+                    completed_scores.append(score)
+            else:
+                failed_runs.append(run.run_id)
+
+        payload: dict[str, object] = {
+            "label": label,
+            "candidate_id": candidate.candidate_id,
+            "requested_runs": run_count,
+            "completed_scores": completed_scores,
+            "completed_runs": len(completed_scores),
+            "failed_runs": failed_runs,
+            "run_ids": run_ids,
+        }
+        if len(completed_scores) > 0:
+            payload["mean_score"] = sum(completed_scores) / len(completed_scores)
+            payload["min_score"] = min(completed_scores)
+            payload["max_score"] = max(completed_scores)
+        return record, payload
+
     def _write_report(self, *, record: AgentExperimentRecord) -> Path:
         """Write a simple autonomous-experiment report artifact."""
 
         report_dir = Path(record.spec.outputs.runtime_dir) / "reports" / "agent_experiments"
         report_dir.mkdir(parents=True, exist_ok=True)
+        comparison_payload, updated_record = self._build_comparison_metrics_payload(record=record)
+        if updated_record != record:
+            record = updated_record
+            self._save_record(record)
         payload = self._build_trace_payload(record=record, for_report=True)
-        report_path = report_dir / f"{record.experiment_id}.report.json"
+        payload["comparison_metrics"] = comparison_payload
+        spec_stem_raw = str(record.metadata.get("spec_file_stem", record.spec.experiment_name))
+        spec_stem = _sanitize_report_name_prefix(spec_stem_raw)
+        report_path = report_dir / f"{spec_stem}--{record.experiment_id}.report.json"
         report_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
         return report_path
 
@@ -1582,7 +2031,10 @@ def _required_progress_action(
         if candidate.candidate_id not in completed_candidate_ids
     ]
     if len(pending) > 0:
-        target = min(pending, key=lambda candidate: (candidate.iteration_index, candidate.created_at))
+        target = min(
+            pending,
+            key=lambda candidate: (candidate.iteration_index, candidate.created_at),
+        )
         return ControllerAction(
             action_type=ActionType.RUN_EXPERIMENT,
             rationale=(
@@ -1615,7 +2067,11 @@ def _select_generation_parent_for_stop_gate(candidates: list[RewardCandidate]) -
         return max(
             evaluated,
             key=lambda candidate: (
-                candidate.aggregate_score if candidate.aggregate_score is not None else float("-inf"),
+                (
+                    candidate.aggregate_score
+                    if candidate.aggregate_score is not None
+                    else float("-inf")
+                ),
                 candidate.iteration_index,
             ),
         )
@@ -1767,9 +2223,110 @@ def _score_from_run_metrics(metrics: dict[str, object]) -> float | None:
     """Extract a comparable scalar score from run metrics when present."""
 
     episode_reward = metrics.get("episode_reward")
-    if isinstance(episode_reward, (int, float)):
+    if isinstance(episode_reward, int | float):
         return float(episode_reward)
     total_reward = metrics.get("total_reward")
-    if isinstance(total_reward, (int, float)):
+    if isinstance(total_reward, int | float):
         return float(total_reward)
     return None
+
+
+def _score_list_from_block(block: dict[str, object]) -> list[float]:
+    """Return completed score values from one comparison/probe score block."""
+
+    values = block.get("completed_scores")
+    if not isinstance(values, list):
+        return []
+    scores: list[float] = []
+    for value in values:
+        if isinstance(value, int | float):
+            scores.append(float(value))
+    return scores
+
+
+def _resolve_human_reward_path(*, record: AgentExperimentRecord) -> Path | None:
+    """Resolve the human-baseline reward path for HNS comparisons."""
+
+    configured = record.spec.execution.comparison.human_reward_path
+    if configured is not None and configured.strip():
+        return Path(configured)
+    return Path(record.spec.baseline_reward.path)
+
+
+def _resolve_sparse_reward_path(*, record: AgentExperimentRecord) -> Path | None:
+    """Resolve sparse-baseline reward path using explicit config or filename heuristic."""
+
+    configured = record.spec.execution.comparison.sparse_reward_path
+    if configured is not None and configured.strip():
+        return Path(configured)
+
+    baseline = Path(record.spec.baseline_reward.path)
+    heuristic_name = baseline.name.replace("baseline", "sparse")
+    heuristic = baseline.with_name(heuristic_name)
+    if heuristic != baseline and heuristic.exists():
+        return heuristic
+    return None
+
+
+def _sanitize_report_name_prefix(raw_value: str) -> str:
+    """Return a filesystem-safe report filename prefix."""
+
+    candidate = re.sub(r"[^A-Za-z0-9._-]+", "_", raw_value.strip())
+    candidate = candidate.strip("._-")
+    return candidate or "experiment"
+
+
+def _default_initial_reward_source(*, entrypoint_name: str) -> str:
+    """Return a neutral reward function used for default initialization mode."""
+
+    return (
+        "from __future__ import annotations\n\n"
+        f"def {entrypoint_name}(env_reward: float = 0.0, **kwargs: object) -> float:\n"
+        '    """Neutral default-init seed reward with no hand-crafted shaping."""\n'
+        "    del kwargs\n"
+        "    return float(env_reward)\n"
+    )
+
+
+def _resolve_default_init_allowed_parameter_names(
+    *,
+    spec: AgentExperimentSpec,
+    seed_template_source: str,
+) -> tuple[str, ...]:
+    """Resolve allowed reward-callable parameters for default-init generation."""
+
+    allowed_names: set[str] = {
+        "state",
+        "observation",
+        "previous_observation",
+        "next_observation",
+        "env_reward",
+        "environment_reward",
+        "terminated",
+        "truncated",
+        "action",
+        "step_index",
+        "info",
+    }
+    baseline_source = Path(spec.baseline_reward.path).read_text(encoding="utf-8")
+    sources = (
+        ("baseline", baseline_source),
+        ("template", seed_template_source),
+    )
+    for label, source in sources:
+        program = load_reward_program(
+            candidate_id=f"default-init-parameter-source-{label}",
+            source_text=source,
+        )
+        if program.validation_status.value == "valid":
+            allowed_names.update(program.parameter_names())
+    return tuple(sorted(allowed_names))
+
+
+def _coerce_reasoning_effort(value: str) -> Literal["minimal", "low", "medium", "high"]:
+    """Coerce an arbitrary reasoning-effort string to the supported literal set."""
+
+    normalized = value.strip().lower()
+    if normalized in {"minimal", "low", "medium", "high"}:
+        return cast(Literal["minimal", "low", "medium", "high"], normalized)
+    return "medium"

@@ -18,7 +18,9 @@ MetadataValue = str | int | float | bool
 
 __all__ = [
     "ActionType",
+    "AgentInitializationConfig",
     "AgentLoopConfig",
+    "ExecutionComparisonConfig",
     "ExecutionFinalEvaluationConfig",
     "AgentBudgetLedger",
     "AgentDecisionRecord",
@@ -40,6 +42,7 @@ __all__ = [
     "StoppingPolicyConfig",
     "TimeBudgetConfig",
     "ToolPolicyConfig",
+    "InitializationMode",
 ]
 
 
@@ -66,6 +69,36 @@ class ActionType(StrEnum):
     COMPARE_CANDIDATES = "compare_candidates"
     REQUEST_HUMAN_FEEDBACK = "request_human_feedback"
     STOP = "stop"
+
+
+class InitializationMode(StrEnum):
+    """Initialization modes for the first candidate in an experiment run."""
+
+    HUMAN = "human"
+    DEFAULT = "default"
+
+
+class AgentInitializationConfig(BaseModel):
+    """Configuration for how the experiment's first reward candidate is seeded."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    mode: InitializationMode = InitializationMode.HUMAN
+    default_seed_candidate_count: int | None = Field(default=None, ge=1)
+
+    @model_validator(mode="after")
+    def validate_default_seed_shape(self) -> AgentInitializationConfig:
+        """Restrict default-seed controls to default initialization mode."""
+
+        if (
+            self.mode == InitializationMode.HUMAN
+            and self.default_seed_candidate_count is not None
+        ):
+            raise ValueError(
+                "initialization.default_seed_candidate_count requires "
+                "initialization.mode='default'"
+            )
+        return self
 
 
 class EnvironmentConfig(BaseModel):
@@ -300,6 +333,32 @@ class ExecutionFinalEvaluationConfig(BaseModel):
         return self
 
 
+class ExecutionComparisonConfig(BaseModel):
+    """Optional Eureka-style comparison and hacking-metric evaluation settings."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    enabled: bool = False
+    human_reward_path: str | None = None
+    sparse_reward_path: str | None = None
+    entrypoint_name: str = "reward"
+    num_eval_runs: int = Field(default=3, ge=1)
+    seed_start: int = Field(default=2_000, ge=0)
+    probe_run_count: int = Field(default=2, ge=1)
+    probe_seed_start: int = Field(default=3_000, ge=0)
+    total_timesteps_override: int | None = Field(default=None, ge=1)
+    eval_runs_override: int | None = Field(default=None, ge=1)
+
+    @field_validator("entrypoint_name")
+    @classmethod
+    def reject_blank_entrypoint_name(cls, value: str) -> str:
+        """Reject blank comparison entrypoint names."""
+
+        if not value:
+            raise ValueError("execution.comparison.entrypoint_name must not be blank")
+        return value
+
+
 class ExecutionConfig(BaseModel):
     """Execution configuration by environment family."""
 
@@ -310,6 +369,7 @@ class ExecutionConfig(BaseModel):
     final_evaluation: ExecutionFinalEvaluationConfig = Field(
         default_factory=ExecutionFinalEvaluationConfig
     )
+    comparison: ExecutionComparisonConfig = Field(default_factory=ExecutionComparisonConfig)
 
 
 class OutputConfig(BaseModel):
@@ -340,6 +400,9 @@ class AgentExperimentSpec(BaseModel):
     version: int = Field(default=1, ge=1)
     experiment_name: str = Field(min_length=1)
     objective: str = Field(min_length=1)
+    initialization: AgentInitializationConfig = Field(
+        default_factory=AgentInitializationConfig
+    )
     environment: EnvironmentConfig
     baseline_reward: BaselineRewardConfig
     models: ModelSetConfig

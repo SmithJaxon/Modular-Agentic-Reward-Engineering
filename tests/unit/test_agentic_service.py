@@ -306,12 +306,95 @@ def test_run_experiment_stops_and_writes_trace() -> None:
     assert result.status.value == "completed"
     assert result.stop_reason == "controller_stop"
     assert result.report_path is not None
+    report_path = Path(result.report_path)
+    assert report_path.exists()
+    assert report_path.name.startswith("agent_stop_enabled--")
+    report_payload = json.loads(report_path.read_text(encoding="utf-8"))
+    assert "comparison_metrics" in report_payload
+    assert report_payload["comparison_metrics"]["init_mode"] == "human"
 
     status = service.get_status(experiment_id=result.experiment_id)
     assert status.consumed_total_tokens == 12
     assert status.consumed_human_feedback_requests == 0
     trace = service.trace_payload(experiment_id=result.experiment_id)
     assert len(trace["decisions"]) == 1
+
+
+def test_default_initialization_mode_bootstraps_seed_candidate() -> None:
+    """Default init mode should bootstrap candidate-000 through the seed-designer path."""
+
+    runtime_root = Path(".agentic-test-runtime-default-init")
+    paths, repository = _service_for_runtime(runtime_root)
+    service = AgentExperimentService(
+        paths=paths,
+        repository=repository,
+        controller=FakeController(),
+        tool_broker=FakeBroker(),  # type: ignore[arg-type]
+    )
+    service.initialize()
+    spec_payload = load_experiment_spec(
+        Path("tools/fixtures/experiments/agent_cartpole_lowcost.yaml")
+    ).model_dump(mode="python")
+    spec_payload["agent_loop"]["enforce_progress_before_stop"] = False
+    spec_payload["initialization"] = {"mode": "default"}
+    spec_file = runtime_root / "agent_default_init.json"
+    runtime_root.mkdir(parents=True, exist_ok=True)
+    spec_file.write_text(json.dumps(spec_payload), encoding="utf-8")
+
+    result = service.run_experiment(
+        spec_file=spec_file,
+        experiment_id=f"experiment-default-init-{uuid4().hex[:8]}",
+    )
+
+    trace = service.trace_payload(experiment_id=result.experiment_id)
+    baseline = next(
+        item
+        for item in trace["candidates"]
+        if item["candidate_id"] == f"{result.experiment_id}-candidate-000"
+    )
+    assert "default-init bootstrap seed" in baseline["change_summary"]
+    assert "def " in baseline["reward_definition"]
+    report_payload = json.loads(Path(result.report_path).read_text(encoding="utf-8"))  # type: ignore[arg-type]
+    assert report_payload["comparison_metrics"]["init_mode"] == "default"
+
+
+def test_default_initialization_mode_supports_multiple_seed_candidates() -> None:
+    """Default init should create the configured number of initial seed candidates."""
+
+    runtime_root = Path(".agentic-test-runtime-default-init-multi-seed")
+    paths, repository = _service_for_runtime(runtime_root)
+    service = AgentExperimentService(
+        paths=paths,
+        repository=repository,
+        controller=FakeController(),
+        tool_broker=FakeBroker(),  # type: ignore[arg-type]
+    )
+    service.initialize()
+    spec_payload = load_experiment_spec(
+        Path("tools/fixtures/experiments/agent_cartpole_lowcost.yaml")
+    ).model_dump(mode="python")
+    spec_payload["agent_loop"]["enforce_progress_before_stop"] = False
+    spec_payload["initialization"] = {
+        "mode": "default",
+        "default_seed_candidate_count": 3,
+    }
+    spec_file = runtime_root / "agent_default_init_multi_seed.json"
+    runtime_root.mkdir(parents=True, exist_ok=True)
+    spec_file.write_text(json.dumps(spec_payload), encoding="utf-8")
+
+    result = service.run_experiment(
+        spec_file=spec_file,
+        experiment_id=f"experiment-default-init-multi-seed-{uuid4().hex[:8]}",
+    )
+
+    trace = service.trace_payload(experiment_id=result.experiment_id)
+    seed_candidates = [
+        item
+        for item in trace["candidates"]
+        if item["candidate_id"].startswith(f"{result.experiment_id}-candidate-")
+    ]
+    assert len(seed_candidates) == 3
+    assert trace["experiment"]["metadata"]["init_seed_candidate_count"] == 3
 
 
 def test_feedback_request_consumes_feedback_budget() -> None:
@@ -550,7 +633,10 @@ def test_apply_tool_result_handles_parallel_run_payloads() -> None:
     ).model_dump(mode="python")
     spec_payload["agent_loop"]["enforce_progress_before_stop"] = False
     spec = AgentExperimentSpec.model_validate(spec_payload)
-    record = service._start_record(spec=spec, experiment_id=f"experiment-run-batch-{uuid4().hex[:8]}")
+    record = service._start_record(
+        spec=spec,
+        experiment_id=f"experiment-run-batch-{uuid4().hex[:8]}",
+    )
 
     candidate_001 = RewardCandidate(
         candidate_id=f"{record.experiment_id}-candidate-001",

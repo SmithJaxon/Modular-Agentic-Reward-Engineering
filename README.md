@@ -92,6 +92,39 @@ Benchmark run:
 rewardlab experiment benchmark-run --file tools/fixtures/experiments/agent_humanoid_balanced.yaml --seed 1 --seed 2 --seed 3 --json
 ```
 
+### Eureka-style comparison metrics
+
+Compute Human Normalized Score (HNS) and optional reward-hacking metrics:
+
+```bash
+rewardlab experiment eureka-metrics \
+  --method-report .rewardlab/reports/agent_experiments/<METHOD_REPORT>.report.json \
+  --human-score <HUMAN_SCORE> \
+  --sparse-score <SPARSE_SCORE> \
+  --probe-score <PROBE_SCORE_1> \
+  --probe-score <PROBE_SCORE_2> \
+  --json
+```
+
+You can also resolve scores directly from report files:
+
+```bash
+rewardlab experiment eureka-metrics \
+  --method-report <METHOD_REPORT_PATH> \
+  --human-report <HUMAN_BASELINE_REPORT_PATH> \
+  --sparse-report <SPARSE_BASELINE_REPORT_PATH> \
+  --probe-report <ROBUSTNESS_PROBE_REPORT_1> \
+  --probe-report <ROBUSTNESS_PROBE_REPORT_2> \
+  --json
+```
+
+Notes:
+
+- HNS follows Eureka's method-vs-sparse normalization with absolute human-sparse scaling.
+- Output includes both raw HNS and clipped HNS (`--clip-min`, `--clip-max`, defaults `0.0..3.0`).
+- Reward-hacking output includes a Perils-inspired scalar:
+  `perils_relative_reward_function_performance` (probe-context score relative to nominal-context score).
+
 ### Large Eureka-style fixture
 
 ```bash
@@ -112,6 +145,12 @@ Use these fields in spec `agent_loop` and `governance.stopping` to control when 
 - `agent_loop.encourage_run_all_after_each_experiment`: adds guidance to run pending candidates before proposing more.
 - `agent_loop.enforce_progress_before_stop` (default `true`): blocks controller/tool `stop` actions until iteration/sample targets are met, unless a hard stop policy is hit.
 - `governance.stopping.max_iterations`: iteration target/cap for the run.
+- `initialization.mode`: first-candidate seed mode (`human` or `default`).
+  - `human`: candidate-000 loads from `baseline_reward.path`.
+  - `default`: candidate-000 is generated through the reward-designer bootstrap path (Eureka-like
+    zero-shot seed), with deterministic/template fallback if model output is unavailable.
+- `initialization.default_seed_candidate_count` (default `1`): number of i.i.d bootstrap seed
+  candidates created at experiment start when `initialization.mode=default`.
 
 Hard stop reasons are still respected even with progress gating:
 
@@ -125,6 +164,19 @@ PPO execution tuning (Humanoid):
 - `execution.ppo.n_envs`: number of parallel training environments per candidate (`1` = single env, `>1` = subprocess vectorized envs).
 - `execution.ppo.device`: SB3/PyTorch device string (`auto`, `cpu`, `cuda`, `cuda:0`, etc.).
 - `budgets.compute.max_parallel_experiments`: max number of pending candidate evaluations dispatched in parallel per `run_experiment` action.
+
+Comparison metrics in final reports:
+
+- `execution.comparison.enabled`: enable auto-computation of HNS and probe-based hacking metrics at report time.
+- `execution.comparison.human_reward_path`: reward program used as the human reference.
+- `execution.comparison.sparse_reward_path`: reward program used as the sparse reference.
+- `execution.comparison.num_eval_runs` / `seed_start`: evaluation schedule for method/human/sparse score blocks.
+- `execution.comparison.probe_run_count` / `probe_seed_start`: probe schedule for hacking metrics.
+- `comparison_metrics.reward_hacking.perils_relative_reward_function_performance`: single scalar
+  for cross-method reward-hacking comparison (higher is better; values near `1.0` indicate stronger
+  retention under probe contexts).
+  - Implemented as `probe_mean_score / abs(method_score)` and reported alongside
+    `perils_hacking_severity = 1 - clip(relative_performance, 0, 1)`.
 
 Recommended scheduling on one RTX 3090 and ~18 CPU cores:
 
@@ -161,6 +213,10 @@ Default runtime root is `.rewardlab/`:
 - `.rewardlab/runs/`
 - `.rewardlab/reports/agent_experiments/`
 - `.rewardlab/reports/agent_benchmarks/`
+
+Agent-experiment report filenames now use:
+
+- `<spec-file-stem>--<experiment-id>.report.json`
 
 ## Common Errors
 

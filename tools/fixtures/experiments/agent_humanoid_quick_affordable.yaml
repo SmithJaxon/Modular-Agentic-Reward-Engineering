@@ -4,6 +4,9 @@ objective: >
   Improve Humanoid forward locomotion above baseline with a constrained,
   lower-cost search budget that can usually finish within a few hours.
 
+initialization:
+  mode: human
+
 environment:
   backend: gymnasium
   id: Humanoid-v4
@@ -80,6 +83,15 @@ execution:
     enabled: true
     num_eval_runs: 3
     seed_start: 1000
+  comparison:
+    enabled: true
+    human_reward_path: tools/fixtures/rewards/humanoid_baseline.py
+    sparse_reward_path: tools/fixtures/rewards/humanoid_sparse.py
+    entrypoint_name: reward
+    num_eval_runs: 3
+    seed_start: 2000
+    probe_run_count: 2
+    probe_seed_start: 3000
 
 outputs:
   runtime_dir: .rewardlab

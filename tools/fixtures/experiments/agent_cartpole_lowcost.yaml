@@ -3,6 +3,9 @@ experiment_name: cartpole_agent_lowcost
 objective: >
   Improve CartPole reward behavior quickly with strict token and compute limits.
 
+initialization:
+  mode: human
+
 environment:
   backend: gymnasium
   id: CartPole-v1
@@ -72,6 +75,15 @@ agent_loop:
 execution:
   rollout:
     max_episode_steps: 200
+  comparison:
+    enabled: true
+    human_reward_path: tools/fixtures/rewards/cartpole_baseline.py
+    sparse_reward_path: tools/fixtures/rewards/cartpole_sparse.py
+    entrypoint_name: compute_reward
+    num_eval_runs: 3
+    seed_start: 2000
+    probe_run_count: 2
+    probe_seed_start: 3000
 
 outputs:
   runtime_dir: .rewardlab

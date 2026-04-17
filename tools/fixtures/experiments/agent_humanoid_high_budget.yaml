@@ -4,6 +4,9 @@ objective: >
   Aggressively optimize Humanoid forward speed while retaining basic stability.
   Allow broader exploration and larger model outputs before giving up.
 
+initialization:
+  mode: human
+
 environment:
   backend: gymnasium
   id: Humanoid-v4
@@ -78,6 +81,15 @@ execution:
     eval_runs: 5
     checkpoint_count: 10
     eval_episodes_per_checkpoint: 1
+  comparison:
+    enabled: true
+    human_reward_path: tools/fixtures/rewards/humanoid_baseline.py
+    sparse_reward_path: tools/fixtures/rewards/humanoid_sparse.py
+    entrypoint_name: reward
+    num_eval_runs: 5
+    seed_start: 2000
+    probe_run_count: 3
+    probe_seed_start: 3000
 
 outputs:
   runtime_dir: .rewardlab
