@@ -45,3 +45,5 @@ src/rewardlab.egg-info/
 *.vrb
 *.xdv
 _minted*/
+
+*.slurm
