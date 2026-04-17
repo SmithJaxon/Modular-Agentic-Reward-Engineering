@@ -35,8 +35,9 @@ class BenchmarkRunSummary:
     consumed_total_usd: float
     consumed_experiments: int
     consumed_train_timesteps: int
-    consumed_human_feedback_requests: int
-    elapsed_minutes: float | None
+    consumed_reward_generations: int = 0
+    consumed_human_feedback_requests: int = 0
+    elapsed_minutes: float | None = None
 
     def to_payload(self) -> dict[str, Any]:
         """Return a JSON-safe payload for one run summary."""
@@ -59,6 +60,7 @@ class BenchmarkRunSummary:
             "consumed_total_usd": self.consumed_total_usd,
             "consumed_experiments": self.consumed_experiments,
             "consumed_train_timesteps": self.consumed_train_timesteps,
+            "consumed_reward_generations": self.consumed_reward_generations,
             "consumed_human_feedback_requests": self.consumed_human_feedback_requests,
             "elapsed_minutes": self.elapsed_minutes,
         }
@@ -154,6 +156,7 @@ def summarize_trace_for_benchmark(
         consumed_total_usd=_float_value(ledger.get("consumed_total_usd")),
         consumed_experiments=_int_value(ledger.get("consumed_experiments")),
         consumed_train_timesteps=_int_value(ledger.get("consumed_train_timesteps")),
+        consumed_reward_generations=_int_value(ledger.get("consumed_reward_generations")),
         consumed_human_feedback_requests=_int_value(
             ledger.get("consumed_human_feedback_requests")
         ),
@@ -205,6 +208,7 @@ def aggregate_benchmark_summaries(
     usd_used = [float(item.consumed_total_usd) for item in summaries]
     experiments_used = [float(item.consumed_experiments) for item in summaries]
     timesteps_used = [float(item.consumed_train_timesteps) for item in summaries]
+    reward_generations_used = [float(item.consumed_reward_generations) for item in summaries]
     decisions_used = [float(item.decision_count) for item in summaries]
 
     efficiency_improvement_per_1k_tokens = []
@@ -242,6 +246,7 @@ def aggregate_benchmark_summaries(
             "consumed_total_usd": _stat_block(usd_used),
             "consumed_experiments": _stat_block(experiments_used),
             "consumed_train_timesteps": _stat_block(timesteps_used),
+            "consumed_reward_generations": _stat_block(reward_generations_used),
             "decision_count": _stat_block(decisions_used),
             "elapsed_minutes": _stat_block(elapsed_minutes),
             "improvement_per_1k_tokens": _stat_block(efficiency_improvement_per_1k_tokens),

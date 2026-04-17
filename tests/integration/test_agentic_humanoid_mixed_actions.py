@@ -170,3 +170,53 @@ def test_agentic_humanoid_mixed_actions_complete_with_full_trace() -> None:
         "compare_candidates",
         "stop",
     ]
+
+
+def test_agentic_multiple_proposals_from_same_parent_produce_unique_candidates() -> None:
+    """Repeated propose actions from one parent should create unique candidate identifiers."""
+
+    runtime_root = Path(".agentic-test-runtime-humanoid-multi-propose")
+    runtime_root.mkdir(parents=True, exist_ok=True)
+
+    spec_payload = load_experiment_spec(
+        Path("tools/fixtures/experiments/agent_humanoid_balanced.yaml")
+    ).model_dump(mode="python")
+    spec_file = runtime_root / "humanoid_multi_propose.json"
+    spec_file.write_text(json.dumps(spec_payload), encoding="utf-8")
+
+    experiment_id = f"humanoid-multi-propose-{uuid4().hex[:8]}"
+    candidate_000 = f"{experiment_id}-candidate-000"
+    controller = SequenceController(
+        actions=[
+            ControllerAction(
+                action_type=ActionType.PROPOSE_REWARD,
+                rationale="Sample one from baseline.",
+                action_input={"parent_candidate_id": candidate_000},
+            ),
+            ControllerAction(
+                action_type=ActionType.PROPOSE_REWARD,
+                rationale="Sample two from baseline.",
+                action_input={"parent_candidate_id": candidate_000},
+            ),
+            ControllerAction(
+                action_type=ActionType.STOP,
+                rationale="Stop after two samples.",
+            ),
+        ]
+    )
+    paths, repository = _service_for_runtime(runtime_root / "runtime")
+    service = AgentExperimentService(
+        paths=paths,
+        repository=repository,
+        execution_service=FakeExecutionService(),  # type: ignore[arg-type]
+        controller=controller,  # type: ignore[arg-type]
+    )
+    service.initialize()
+
+    result = service.run_experiment(spec_file=spec_file, experiment_id=experiment_id)
+
+    assert result.status.value == "completed"
+    candidates = service.list_candidates(experiment_id)
+    candidate_ids = {item.candidate_id for item in candidates}
+    assert f"{experiment_id}-candidate-001" in candidate_ids
+    assert f"{experiment_id}-candidate-002" in candidate_ids

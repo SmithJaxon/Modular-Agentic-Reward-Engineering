@@ -82,10 +82,11 @@ class ProposeRewardTool:
             result = designer.design_next_candidate(request)
         except Exception:
             result = DeterministicRewardDesigner().design_next_candidate(request)
+        next_candidate_sequence = _next_candidate_sequence(ordered_candidates)
         candidate = RewardCandidate(
             candidate_id=(
                 f"{record.experiment_id}-candidate-"
-                f"{parent_candidate.iteration_index + 1:03d}"
+                f"{next_candidate_sequence:03d}"
             ),
             session_id=record.experiment_id,
             parent_candidate_id=parent_candidate.candidate_id,
@@ -176,3 +177,11 @@ def _list_of_dicts(value: object) -> tuple[dict[str, object], ...]:
         return ()
     normalized = [item for item in value if isinstance(item, dict)]
     return tuple(normalized)
+
+
+def _next_candidate_sequence(candidates: list[RewardCandidate]) -> int:
+    """Return the next globally unique candidate sequence number."""
+
+    if not candidates:
+        return 0
+    return len(candidates)

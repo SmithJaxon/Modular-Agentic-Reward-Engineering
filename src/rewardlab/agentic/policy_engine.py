@@ -50,6 +50,8 @@ class PolicyEngine:
             and ledger.consumed_train_timesteps >= spec.budgets.compute.max_total_train_timesteps
         ):
             return PolicyDecision(True, "compute_timesteps_budget_exhausted")
+        if ledger.consumed_reward_generations >= spec.budgets.compute.max_reward_generations:
+            return PolicyDecision(True, "reward_generation_budget_exhausted")
         if failed_actions >= stopping.max_failed_actions:
             return PolicyDecision(True, "failed_action_threshold_reached")
         if non_progress_actions >= max(stopping.plateau_window, 2) * 2:

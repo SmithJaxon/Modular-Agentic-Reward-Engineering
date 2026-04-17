@@ -18,8 +18,9 @@ from rewardlab.agentic.service import AgentExperimentService
 from rewardlab.agentic.spec_loader import load_experiment_spec
 from rewardlab.orchestrator.session_service import ServicePaths
 from rewardlab.persistence.session_repository import RepositoryPaths, SessionRepository
-from rewardlab.schemas.agent_experiment import ActionType
-from rewardlab.schemas.experiment_run import ExecutionMode, RunStatus, RunType
+from rewardlab.schemas.agent_experiment import ActionType, AgentExperimentSpec
+from rewardlab.schemas.experiment_run import ExecutionMode, ExperimentRun, RunStatus, RunType
+from rewardlab.schemas.session_config import EnvironmentBackend
 
 
 @dataclass
@@ -151,6 +152,38 @@ class RobustnessThenStopBroker:
         return ToolResult(status="ok", summary="stop", payload={"stop": True})
 
 
+@dataclass
+class ProposeOnlyBroker:
+    """Broker fake that proposes one candidate revision for budget-stop tests."""
+
+    def execute_action(self, **kwargs: object) -> ToolResult:
+        """Return a deterministic proposal payload for propose actions."""
+
+        action = kwargs["action"]
+        record = kwargs["record"]
+        if action.action_type.value != "propose_reward":
+            return ToolResult(status="ok", summary="stop", payload={"stop": True})
+        candidate_id = f"{record.experiment_id}-candidate-001"
+        return ToolResult(
+            status="ok",
+            summary="candidate proposed",
+            payload={
+                "candidate": {
+                    "candidate_id": candidate_id,
+                    "session_id": record.experiment_id,
+                    "parent_candidate_id": f"{record.experiment_id}-candidate-000",
+                    "iteration_index": 1,
+                    "reward_definition": "def reward(observation):\n    return 1.1\n",
+                    "change_summary": "budget proposal",
+                    "aggregate_score": None,
+                    "selected_final": False,
+                    "minor_robustness_risk_accepted": False,
+                    "created_at": datetime(2026, 4, 10, 12, 1, tzinfo=UTC).isoformat(),
+                }
+            },
+        )
+
+
 def _service_for_runtime(runtime_root: Path) -> tuple[ServicePaths, SessionRepository]:
     """Create reusable runtime paths and repository for tests."""
 
@@ -251,6 +284,49 @@ def test_feedback_request_consumes_feedback_budget() -> None:
     assert result.stop_reason == "awaiting_human_feedback"
     status = service.get_status(experiment_id=result.experiment_id)
     assert status.consumed_human_feedback_requests == 1
+
+
+def test_reward_generation_budget_stops_loop_when_exhausted() -> None:
+    """Service should stop when reward-generation budget is consumed."""
+
+    runtime_root = Path(".agentic-test-runtime-generation-budget")
+    paths, repository = _service_for_runtime(runtime_root)
+    spec_payload = load_experiment_spec(
+        Path("tools/fixtures/experiments/agent_cartpole_lowcost.yaml")
+    ).model_dump(mode="python")
+    spec_payload["budgets"]["compute"]["max_reward_generations"] = 1
+    spec_payload["agent_loop"]["samples_per_iteration"] = 2
+    spec_file = runtime_root / "agent_generation_budget.json"
+    runtime_root.mkdir(parents=True, exist_ok=True)
+    spec_file.write_text(json.dumps(spec_payload), encoding="utf-8")
+
+    controller = SequenceController(
+        actions=[
+            ControllerAction(
+                action_type=ActionType.PROPOSE_REWARD,
+                rationale="propose until budget says stop",
+                expected_value=0.2,
+                expected_cost=0.0,
+                action_input={},
+            )
+        ]
+    )
+    service = AgentExperimentService(
+        paths=paths,
+        repository=repository,
+        controller=controller,  # type: ignore[arg-type]
+        tool_broker=ProposeOnlyBroker(),  # type: ignore[arg-type]
+    )
+    service.initialize()
+    result = service.run_experiment(
+        spec_file=spec_file,
+        experiment_id=f"experiment-generation-budget-{uuid4().hex[:8]}",
+    )
+
+    assert result.status.value == "completed"
+    assert result.stop_reason == "reward_generation_budget_exhausted"
+    status = service.get_status(experiment_id=result.experiment_id)
+    assert status.consumed_reward_generations == 1
 
 
 def test_submit_feedback_then_resume_completes_loop() -> None:
@@ -398,3 +474,243 @@ def test_run_robustness_action_persists_assessment_and_probe_runs() -> None:
     assert len(robustness_runs) == 1
     status = service.get_status(experiment_id=result.experiment_id)
     assert status.consumed_experiments == 1
+
+
+def test_final_evaluation_runs_after_completion_when_enabled() -> None:
+    """Service should execute configured final-evaluation runs after completion."""
+
+    runtime_root = Path(".agentic-test-runtime-final-eval")
+    paths, repository = _service_for_runtime(runtime_root)
+    runtime_root.mkdir(parents=True, exist_ok=True)
+
+    spec_payload = {
+        "version": 1,
+        "experiment_name": "final-eval-smoke",
+        "objective": "Validate post-loop final evaluation behavior.",
+        "environment": {"backend": "gymnasium", "id": "CartPole-v1", "seed": 5},
+        "baseline_reward": {
+            "mode": "file",
+            "path": "tools/fixtures/rewards/cartpole_baseline.py",
+            "entrypoint_name": "compute_reward",
+        },
+        "models": {
+            "controller": {
+                "model": "gpt-5-nano",
+                "reasoning_effort": "low",
+                "max_completion_tokens": 2000,
+            },
+            "reward_designer": {
+                "model": "gpt-5-nano",
+                "reasoning_effort": "low",
+                "max_completion_tokens": 2000,
+            },
+            "analyzer": {
+                "model": "gpt-5-nano",
+                "reasoning_effort": "low",
+                "max_completion_tokens": 1000,
+            },
+        },
+        "budgets": {
+            "api": {
+                "max_total_tokens": 50000,
+                "max_total_usd": 5.0,
+                "max_completion_tokens_per_call": 4000,
+            },
+            "time": {"max_wall_clock_minutes": 60},
+            "compute": {
+                "max_experiments": 20,
+                "max_total_train_timesteps": 0,
+                "max_reward_generations": 4,
+                "max_parallel_experiments": 1,
+            },
+        },
+        "governance": {
+            "stopping": {
+                "max_iterations": 4,
+                "plateau_window": 2,
+                "min_relative_improvement": 0.01,
+                "max_no_improve_streak": 2,
+                "max_failed_actions": 2,
+            },
+            "human_feedback": {"allow": False, "feedback_gate": "none", "max_requests": 0},
+        },
+        "tool_policy": {
+            "allowed_tools": [
+                "run_experiment",
+                "propose_reward_revision",
+                "summarize_run_artifacts",
+                "validate_reward_program",
+                "estimate_cost_and_risk",
+                "compare_candidates",
+                "stop_or_continue_recommendation",
+            ],
+            "default_timeout_seconds": 300,
+            "max_retries_per_tool": 1,
+        },
+        "agent_loop": {
+            "encourage_run_all_after_each_experiment": False,
+            "samples_per_iteration": 1,
+        },
+        "execution": {
+            "rollout": {"max_episode_steps": 200},
+            "final_evaluation": {
+                "enabled": True,
+                "num_eval_runs": 3,
+                "seed_start": 31,
+            },
+        },
+        "outputs": {
+            "runtime_dir": str(runtime_root / "runtime"),
+            "report_detail": "full",
+            "save_decision_trace": True,
+        },
+    }
+    spec_file = runtime_root / "final_eval_spec.json"
+    spec_file.write_text(json.dumps(spec_payload), encoding="utf-8")
+
+    service = AgentExperimentService(
+        paths=paths,
+        repository=repository,
+        controller=FakeController(),
+        tool_broker=FakeBroker(),  # type: ignore[arg-type]
+    )
+    service.initialize()
+
+    result = service.run_experiment(
+        spec_file=spec_file,
+        experiment_id=f"experiment-final-eval-{uuid4().hex[:8]}",
+    )
+    assert result.status.value == "completed"
+    trace = service.trace_payload(experiment_id=result.experiment_id)
+    final_eval_runs = [
+        run
+        for run in trace["runs"]
+        if isinstance(run, dict) and str(run.get("run_id", "")).startswith(
+            f"{result.experiment_id}-final-eval-"
+        )
+    ]
+    assert len(final_eval_runs) == 3
+    status = service.get_status(experiment_id=result.experiment_id)
+    assert status.consumed_experiments == 3
+    experiment_payload = trace["experiment"]
+    assert experiment_payload["metadata"]["final_eval_completed"] is True
+
+
+def test_compute_usage_counts_eval_runs_in_train_timestep_ledger() -> None:
+    """Service should count total PPO work as train_timesteps * evaluation_run_count."""
+
+    runtime_root = Path(".agentic-test-runtime-compute-ledger")
+    paths, repository = _service_for_runtime(runtime_root)
+    service = AgentExperimentService(
+        paths=paths,
+        repository=repository,
+        controller=FakeController(),
+        tool_broker=FakeBroker(),  # type: ignore[arg-type]
+    )
+    service.initialize()
+
+    spec_payload = {
+        "version": 1,
+        "experiment_name": "compute-ledger-smoke",
+        "objective": "Validate compute ledger scaling for PPO eval runs.",
+        "environment": {"backend": "gymnasium", "id": "Humanoid-v4", "seed": 13},
+        "baseline_reward": {
+            "mode": "file",
+            "path": "tools/fixtures/rewards/humanoid_baseline.py",
+            "entrypoint_name": "reward",
+        },
+        "models": {
+            "controller": {
+                "model": "gpt-5-nano",
+                "reasoning_effort": "low",
+                "max_completion_tokens": 2000,
+            },
+            "reward_designer": {
+                "model": "gpt-5-nano",
+                "reasoning_effort": "low",
+                "max_completion_tokens": 2000,
+            },
+            "analyzer": {
+                "model": "gpt-5-nano",
+                "reasoning_effort": "low",
+                "max_completion_tokens": 1000,
+            },
+        },
+        "budgets": {
+            "api": {
+                "max_total_tokens": 50000,
+                "max_total_usd": 5.0,
+                "max_completion_tokens_per_call": 4000,
+            },
+            "time": {"max_wall_clock_minutes": 60},
+            "compute": {
+                "max_experiments": 20,
+                "max_total_train_timesteps": 0,
+                "max_reward_generations": 4,
+                "max_parallel_experiments": 1,
+            },
+        },
+        "governance": {
+            "stopping": {
+                "max_iterations": 4,
+                "plateau_window": 2,
+                "min_relative_improvement": 0.01,
+                "max_no_improve_streak": 2,
+                "max_failed_actions": 2,
+            },
+            "human_feedback": {"allow": False, "feedback_gate": "none", "max_requests": 0},
+        },
+        "tool_policy": {
+            "allowed_tools": [
+                "run_experiment",
+                "propose_reward_revision",
+                "summarize_run_artifacts",
+                "validate_reward_program",
+                "estimate_cost_and_risk",
+                "compare_candidates",
+                "stop_or_continue_recommendation",
+            ],
+            "default_timeout_seconds": 300,
+            "max_retries_per_tool": 1,
+        },
+        "agent_loop": {
+            "encourage_run_all_after_each_experiment": False,
+            "samples_per_iteration": 1,
+        },
+        "execution": {
+            "ppo": {
+                "total_timesteps": 100000,
+                "eval_runs": 5,
+                "checkpoint_count": 10,
+                "eval_episodes_per_checkpoint": 1,
+            }
+        },
+        "outputs": {
+            "runtime_dir": str(runtime_root / "runtime"),
+            "report_detail": "summary",
+            "save_decision_trace": True,
+        },
+    }
+    spec = AgentExperimentSpec.model_validate(spec_payload)
+    record = service._start_record(spec=spec, experiment_id=f"experiment-ledger-{uuid4().hex[:8]}")
+
+    run = ExperimentRun(
+        run_id=f"{record.experiment_id}-run-001",
+        candidate_id=f"{record.experiment_id}-candidate-000",
+        backend=EnvironmentBackend.GYMNASIUM,
+        environment_id="Humanoid-v4",
+        run_type=RunType.PERFORMANCE,
+        execution_mode=ExecutionMode.ACTUAL_BACKEND,
+        variant_label="default",
+        seed=13,
+        status=RunStatus.COMPLETED,
+        metrics={"episode_reward": 0.5, "train_timesteps": 100000, "evaluation_run_count": 5},
+        artifact_refs=["manifest.json", "metrics.json"],
+        started_at=datetime(2026, 4, 10, 12, 0, tzinfo=UTC),
+        ended_at=datetime(2026, 4, 10, 12, 5, tzinfo=UTC),
+    )
+
+    updated = service._add_compute_usage(record=record, run=run)
+
+    assert updated.budget_ledger.consumed_experiments == 1
+    assert updated.budget_ledger.consumed_train_timesteps == 500000

@@ -100,8 +100,9 @@ class ControllerAgent:
 
         candidates = sorted(context.candidates, key=lambda candidate: candidate.iteration_index)
         latest = candidates[-1]
-        evaluated_ids = {run.candidate_id for run in context.runs}
+        evaluated_ids = _completed_performance_candidate_ids(context.runs)
         spec = context.record.spec
+        loop_cfg = spec.agent_loop
         stopping = spec.governance.stopping
         recent_action_types = [
             item.get("action_type")
@@ -113,6 +114,10 @@ class ControllerAgent:
         )
         experiment_utilization = (
             context.record.budget_ledger.consumed_experiments / spec.budgets.compute.max_experiments
+        )
+        generation_utilization = (
+            context.record.budget_ledger.consumed_reward_generations
+            / spec.budgets.compute.max_reward_generations
         )
         scored_candidates = [
             candidate for candidate in candidates if candidate.aggregate_score is not None
@@ -138,7 +143,7 @@ class ControllerAgent:
             )
 
         if (
-            (token_utilization >= 0.8 or experiment_utilization >= 0.8)
+            (token_utilization >= 0.8 or experiment_utilization >= 0.8 or generation_utilization >= 0.8)
             and "estimate_cost_and_risk" not in recent_action_types
             and _is_action_type_allowed(
                 ActionType.ESTIMATE_COST_AND_RISK,
@@ -150,6 +155,27 @@ class ControllerAgent:
                 rationale="Budget utilization is elevated; estimating risk before new spend.",
                 expected_value=0.25,
                 expected_cost=0.02,
+            )
+
+        pending = [
+            candidate
+            for candidate in candidates
+            if candidate.candidate_id not in evaluated_ids
+        ]
+        if loop_cfg.encourage_run_all_after_each_experiment and pending:
+            target = min(
+                pending,
+                key=lambda candidate: (candidate.iteration_index, candidate.created_at),
+            )
+            return ControllerAction(
+                action_type=ActionType.RUN_EXPERIMENT,
+                rationale=(
+                    "Configured to encourage running all pending candidates; "
+                    "executing the oldest pending candidate."
+                ),
+                expected_value=0.7,
+                expected_cost=0.5,
+                action_input={"candidate_id": target.candidate_id},
             )
 
         if latest.candidate_id not in evaluated_ids:
@@ -247,12 +273,31 @@ class ControllerAgent:
                 expected_cost=0.0,
             )
 
+        parent_candidate = _select_generation_parent(candidates)
+        existing_children = [
+            candidate
+            for candidate in candidates
+            if candidate.parent_candidate_id == parent_candidate.candidate_id
+            and candidate.iteration_index == parent_candidate.iteration_index + 1
+        ]
+        if len(existing_children) < loop_cfg.samples_per_iteration:
+            return ControllerAction(
+                action_type=ActionType.PROPOSE_REWARD,
+                rationale=(
+                    "Need additional reward samples for the current iteration "
+                    f"target ({len(existing_children)}/{loop_cfg.samples_per_iteration})."
+                ),
+                expected_value=0.6,
+                expected_cost=0.2,
+                action_input={"parent_candidate_id": parent_candidate.candidate_id},
+            )
+
         return ControllerAction(
             action_type=ActionType.PROPOSE_REWARD,
             rationale="Need a revised reward candidate for the next evaluation.",
             expected_value=0.6,
             expected_cost=0.2,
-            action_input={"parent_candidate_id": latest.candidate_id},
+            action_input={"parent_candidate_id": parent_candidate.candidate_id},
         )
 
 
@@ -285,6 +330,25 @@ def _build_controller_prompt(context: ControllerContext) -> str:
         }
         for run in context.runs[-3:]
     ]
+    loop_cfg = spec.agent_loop
+    guidance_note = (
+        "Guidance: Encourage running all pending candidates before proposing new ones."
+        if loop_cfg.encourage_run_all_after_each_experiment
+        else "Guidance: Running all pending candidates is optional."
+    )
+    ppo_settings = spec.execution.ppo
+    execution_note = (
+        (
+            "Execution settings: "
+            f"ppo_total_timesteps={ppo_settings.total_timesteps}, "
+            f"ppo_eval_runs={ppo_settings.eval_runs}, "
+            f"ppo_checkpoint_count={ppo_settings.checkpoint_count}, "
+            "ppo_eval_episodes_per_checkpoint="
+            f"{ppo_settings.eval_episodes_per_checkpoint}."
+        )
+        if ppo_settings is not None
+        else "Execution settings: rollout mode active (no PPO execution block configured)."
+    )
 
     return (
         f"Experiment id: {context.record.experiment_id}\n"
@@ -297,11 +361,18 @@ def _build_controller_prompt(context: ControllerContext) -> str:
         f"Budget ledger: tokens={context.record.budget_ledger.consumed_total_tokens}, "
         f"usd={context.record.budget_ledger.consumed_total_usd}, "
         f"experiments={context.record.budget_ledger.consumed_experiments}, "
-        f"timesteps={context.record.budget_ledger.consumed_train_timesteps}\n"
+        f"timesteps={context.record.budget_ledger.consumed_train_timesteps}, "
+        "reward_generations="
+        f"{context.record.budget_ledger.consumed_reward_generations}\n"
         f"Budget limits: tokens={spec.budgets.api.max_total_tokens}, "
         f"usd={spec.budgets.api.max_total_usd}, "
         f"experiments={spec.budgets.compute.max_experiments}, "
-        f"timesteps={spec.budgets.compute.max_total_train_timesteps}\n"
+        f"timesteps={spec.budgets.compute.max_total_train_timesteps}, "
+        "reward_generations="
+        f"{spec.budgets.compute.max_reward_generations}\n"
+        f"Agent-loop guidance: samples_per_iteration={loop_cfg.samples_per_iteration}\n"
+        f"{guidance_note}\n"
+        f"{execution_note}\n"
         f"Recent candidate scores: {json.dumps(scores)}\n"
         f"Recent runs: {json.dumps(recent_runs)}\n"
         f"Allowed actions: {', '.join(_allowed_action_names(spec=spec))}\n"
@@ -309,6 +380,31 @@ def _build_controller_prompt(context: ControllerContext) -> str:
         "expected_cost, action_input.\n"
         "Choose stop when expected gain is low versus budget risk or plateau persists.\n"
     )
+
+
+def _completed_performance_candidate_ids(runs: list[ExperimentRun]) -> set[str]:
+    """Return candidate ids that have completed performance evidence."""
+
+    return {
+        run.candidate_id
+        for run in runs
+        if run.run_type.value == "performance" and run.status.value == "completed"
+    }
+
+
+def _select_generation_parent(candidates: list[RewardCandidate]) -> RewardCandidate:
+    """Return the current parent candidate for next reward generation."""
+
+    evaluated = [candidate for candidate in candidates if candidate.aggregate_score is not None]
+    if evaluated:
+        return max(
+            evaluated,
+            key=lambda candidate: (
+                candidate.aggregate_score or float("-inf"),
+                candidate.iteration_index,
+            ),
+        )
+    return max(candidates, key=lambda candidate: candidate.iteration_index)
 
 
 def _coerce_reasoning(value: str) -> Literal["minimal", "low", "medium", "high"]:

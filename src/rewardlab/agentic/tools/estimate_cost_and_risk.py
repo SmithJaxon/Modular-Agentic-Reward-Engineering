@@ -46,6 +46,7 @@ class EstimateCostAndRiskTool:
             "usd": float(spec.budgets.api.max_total_usd),
             "experiments": float(spec.budgets.compute.max_experiments),
             "timesteps": float(spec.budgets.compute.max_total_train_timesteps),
+            "reward_generations": float(spec.budgets.compute.max_reward_generations),
             "minutes": float(spec.budgets.time.max_wall_clock_minutes),
         }
         used = {
@@ -53,6 +54,7 @@ class EstimateCostAndRiskTool:
             "usd": float(ledger.consumed_total_usd),
             "experiments": float(ledger.consumed_experiments),
             "timesteps": float(ledger.consumed_train_timesteps),
+            "reward_generations": float(ledger.consumed_reward_generations),
             "minutes": elapsed_minutes,
         }
         remaining = {key: max(limits[key] - used[key], 0.0) for key in limits}
@@ -84,7 +86,8 @@ class EstimateCostAndRiskTool:
             summary=(
                 f"Estimated budget risk={risk_level}; "
                 f"remaining experiments={int(remaining['experiments'])}, "
-                f"remaining tokens={int(remaining['tokens'])}."
+                f"remaining tokens={int(remaining['tokens'])}, "
+                f"remaining reward generations={int(remaining['reward_generations'])}."
             ),
             payload={
                 "risk_level": risk_level,

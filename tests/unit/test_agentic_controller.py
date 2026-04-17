@@ -262,3 +262,54 @@ def test_controller_heuristic_requests_human_feedback_when_enabled() -> None:
     )
 
     assert action.action_type.value == "request_human_feedback"
+
+
+def test_controller_heuristic_prefers_oldest_pending_when_run_all_encouraged() -> None:
+    """When run-all guidance is enabled, heuristic should execute oldest pending candidate."""
+
+    record = _record_from_fixture()
+    candidate_0 = RewardCandidate(
+        candidate_id="experiment-test-candidate-000",
+        session_id="experiment-test",
+        iteration_index=0,
+        reward_definition="def reward(observation):\n    return 1.0\n",
+        change_summary="baseline",
+        aggregate_score=1.0,
+    )
+    candidate_1 = RewardCandidate(
+        candidate_id="experiment-test-candidate-001",
+        session_id="experiment-test",
+        parent_candidate_id=candidate_0.candidate_id,
+        iteration_index=1,
+        reward_definition="def reward(observation):\n    return 2.0\n",
+        change_summary="sample one",
+    )
+    candidate_2 = RewardCandidate(
+        candidate_id="experiment-test-candidate-002",
+        session_id="experiment-test",
+        parent_candidate_id=candidate_0.candidate_id,
+        iteration_index=1,
+        reward_definition="def reward(observation):\n    return 3.0\n",
+        change_summary="sample two",
+    )
+
+    action, _ = ControllerAgent(openai_client=NoCredentialClient()).choose_action(
+        ControllerContext(
+            record=record,
+            candidates=[candidate_0, candidate_1, candidate_2],
+            runs=[
+                _completed_run(
+                    record=record,
+                    run_id="experiment-test-run-001",
+                    candidate_id=candidate_0.candidate_id,
+                    reward=1.0,
+                ),
+            ],
+            recent_decisions=[],
+            failed_actions=0,
+            no_improve_streak=0,
+        )
+    )
+
+    assert action.action_type.value == "run_experiment"
+    assert action.action_input["candidate_id"] == candidate_1.candidate_id

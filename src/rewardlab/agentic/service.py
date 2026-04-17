@@ -32,7 +32,12 @@ from rewardlab.agentic.tools import (
     SummarizeRunArtifactsTool,
     ValidateRewardProgramTool,
 )
-from rewardlab.experiments.execution_service import ExperimentExecutionService
+from rewardlab.experiments.artifacts import RunArtifactWriter
+from rewardlab.experiments.execution_service import ExecutionRequest, ExperimentExecutionService
+from rewardlab.experiments.gymnasium_runner import (
+    GymnasiumExperimentRunner,
+    HumanoidPpoEvaluationConfig,
+)
 from rewardlab.feedback.human_feedback_service import HumanFeedbackService
 from rewardlab.orchestrator.session_service import (
     ServicePaths,
@@ -47,7 +52,7 @@ from rewardlab.schemas.agent_experiment import (
     AgentExperimentSpec,
     AgentExperimentStatus,
 )
-from rewardlab.schemas.experiment_run import ExperimentRun
+from rewardlab.schemas.experiment_run import ExecutionMode, ExperimentRun, RunStatus
 from rewardlab.schemas.feedback_entry import FeedbackEntry
 from rewardlab.schemas.reward_candidate import RewardCandidate
 from rewardlab.schemas.robustness_assessment import RobustnessAssessment
@@ -94,6 +99,7 @@ class AgentExperimentStatusPayload:
     consumed_total_usd: float
     consumed_experiments: int
     consumed_train_timesteps: int
+    consumed_reward_generations: int
     consumed_human_feedback_requests: int
 
     def to_json_payload(self) -> dict[str, str | int | float | None]:
@@ -108,6 +114,7 @@ class AgentExperimentStatusPayload:
             "consumed_total_usd": self.consumed_total_usd,
             "consumed_experiments": self.consumed_experiments,
             "consumed_train_timesteps": self.consumed_train_timesteps,
+            "consumed_reward_generations": self.consumed_reward_generations,
             "consumed_human_feedback_requests": self.consumed_human_feedback_requests,
         }
 
@@ -354,6 +361,7 @@ class AgentExperimentService:
             )
             if policy_decision.should_stop:
                 record = self._complete_record(record, reason=policy_decision.reason)
+                record = self._run_final_evaluation(record=record)
                 report_path = self._write_report(record=record)
                 break
 
@@ -415,6 +423,7 @@ class AgentExperimentService:
 
             if action.action_type == ActionType.STOP or bool(tool_result.payload.get("stop")):
                 record = self._complete_record(record, reason="controller_stop")
+                record = self._run_final_evaluation(record=record)
                 report_path = self._write_report(record=record)
                 break
 
@@ -427,10 +436,13 @@ class AgentExperimentService:
                 AgentExperimentStatus.FAILED,
                 AgentExperimentStatus.INTERRUPTED,
             }:
+                if record.status == AgentExperimentStatus.COMPLETED:
+                    record = self._run_final_evaluation(record=record)
                 report_path = self._write_report(record=record)
                 break
         else:
             record = self._complete_record(record, reason="loop_guard_cap_reached")
+            record = self._run_final_evaluation(record=record)
             report_path = self._write_report(record=record)
 
         self._save_record(record)
@@ -449,6 +461,7 @@ class AgentExperimentService:
             consumed_total_usd=record.budget_ledger.consumed_total_usd,
             consumed_experiments=record.budget_ledger.consumed_experiments,
             consumed_train_timesteps=record.budget_ledger.consumed_train_timesteps,
+            consumed_reward_generations=record.budget_ledger.consumed_reward_generations,
             consumed_human_feedback_requests=(
                 record.budget_ledger.consumed_human_feedback_requests
             ),
@@ -798,6 +811,7 @@ class AgentExperimentService:
         if action.action_type == ActionType.PROPOSE_REWARD:
             candidate = RewardCandidate.model_validate(result.payload["candidate"])
             self._save_candidate(candidate)
+            record = self._add_reward_generation_usage(record)
             self.repository.append_event(
                 session_id=record.experiment_id,
                 event_type="agent_experiment.candidate_proposed",
@@ -960,11 +974,15 @@ class AgentExperimentService:
         """Increment compute budget usage from a completed run."""
 
         train_timesteps = int(run.metrics.get("train_timesteps", 0))
+        evaluation_run_count = int(run.metrics.get("evaluation_run_count", 1))
+        if evaluation_run_count < 1:
+            evaluation_run_count = 1
+        effective_train_timesteps = max(train_timesteps, 0) * evaluation_run_count
         ledger = record.budget_ledger.model_copy(
             update={
                 "consumed_experiments": record.budget_ledger.consumed_experiments + 1,
                 "consumed_train_timesteps": (
-                    record.budget_ledger.consumed_train_timesteps + max(train_timesteps, 0)
+                    record.budget_ledger.consumed_train_timesteps + effective_train_timesteps
                 ),
             }
         )
@@ -980,6 +998,21 @@ class AgentExperimentService:
             update={
                 "consumed_human_feedback_requests": (
                     record.budget_ledger.consumed_human_feedback_requests + 1
+                )
+            }
+        )
+        return record.model_copy(update={"budget_ledger": ledger})
+
+    def _add_reward_generation_usage(
+        self,
+        record: AgentExperimentRecord,
+    ) -> AgentExperimentRecord:
+        """Increment reward-generation usage in the budget ledger."""
+
+        ledger = record.budget_ledger.model_copy(
+            update={
+                "consumed_reward_generations": (
+                    record.budget_ledger.consumed_reward_generations + 1
                 )
             }
         )
@@ -1113,6 +1146,127 @@ class AgentExperimentService:
             payload=payload,
             updated_at=datetime.now(UTC).isoformat(),
         )
+
+    def _run_final_evaluation(
+        self,
+        *,
+        record: AgentExperimentRecord,
+    ) -> AgentExperimentRecord:
+        """Optionally run a post-loop multi-seed final evaluation for the best candidate."""
+
+        final_cfg = record.spec.execution.final_evaluation
+        if not final_cfg.enabled:
+            return record
+        if bool(record.metadata.get("final_eval_completed", False)):
+            return record
+
+        candidates = self.list_candidates(record.experiment_id)
+        if len(candidates) == 0:
+            return record
+        best_candidate = _resolve_best_candidate_for_final_eval(record=record, candidates=candidates)
+        if best_candidate is None:
+            return record
+
+        spec = record.spec
+        rollout = spec.execution.rollout
+        base_seed = (
+            spec.environment.seed
+            if spec.environment.seed is not None
+            else final_cfg.seed_start
+        )
+        execution_service = _resolve_execution_service(
+            default_service=self.execution_service,
+            runtime_dir=Path(spec.outputs.runtime_dir),
+        )
+        runner = _build_runner_for_spec(
+            spec=spec,
+            total_timesteps_override=final_cfg.total_timesteps_override,
+            eval_runs_override=final_cfg.eval_runs_override,
+        )
+
+        completed_scores: list[float] = []
+        completed_count = 0
+        failed_count = 0
+        for run_index in range(final_cfg.num_eval_runs):
+            eval_seed = base_seed + run_index
+            run_id = f"{record.experiment_id}-final-eval-{run_index + 1:03d}"
+            request = ExecutionRequest(
+                run_id=run_id,
+                backend=spec.environment.backend,
+                environment_id=spec.environment.id,
+                execution_mode=ExecutionMode.ACTUAL_BACKEND,
+                variant_label=f"final_eval_seed_{eval_seed}",
+                seed=eval_seed,
+                entrypoint_name=spec.baseline_reward.entrypoint_name,
+                max_episode_steps=(
+                    rollout.max_episode_steps if rollout is not None else None
+                ),
+            )
+            result = execution_service.execute_candidate(
+                candidate=best_candidate,
+                request=request,
+                runner=runner,
+            )
+            run = result.run
+            self.repository.save_experiment_run(run)
+            if run.status == RunStatus.COMPLETED:
+                completed_count += 1
+                record = self._add_compute_usage(record=record, run=run)
+                score = _score_from_run_metrics(run.metrics)
+                if score is not None:
+                    completed_scores.append(score)
+                self.repository.append_event(
+                    session_id=record.experiment_id,
+                    event_type="agent_experiment.final_evaluation_run_completed",
+                    payload={
+                        "run_id": run.run_id,
+                        "candidate_id": run.candidate_id,
+                        "variant_label": run.variant_label,
+                        "score": score,
+                        "artifact_refs": run.artifact_refs,
+                    },
+                )
+            else:
+                failed_count += 1
+                self.repository.append_event(
+                    session_id=record.experiment_id,
+                    event_type="agent_experiment.final_evaluation_run_failed",
+                    payload={
+                        "run_id": run.run_id,
+                        "candidate_id": run.candidate_id,
+                        "variant_label": run.variant_label,
+                        "failure_reason": run.failure_reason,
+                    },
+                )
+
+        final_eval_mean = (
+            (sum(completed_scores) / len(completed_scores))
+            if len(completed_scores) > 0
+            else None
+        )
+        metadata: dict[str, str | int | float | bool] = {
+            **record.metadata,
+            "final_eval_completed": True,
+            "final_eval_candidate_id": best_candidate.candidate_id,
+            "final_eval_num_runs": final_cfg.num_eval_runs,
+            "final_eval_completed_runs": completed_count,
+            "final_eval_failed_runs": failed_count,
+        }
+        if final_eval_mean is not None:
+            metadata["final_eval_mean_score"] = round(final_eval_mean, 6)
+        record = record.model_copy(update={"metadata": metadata})
+        self.repository.append_event(
+            session_id=record.experiment_id,
+            event_type="agent_experiment.final_evaluation_completed",
+            payload={
+                "candidate_id": best_candidate.candidate_id,
+                "requested_runs": final_cfg.num_eval_runs,
+                "completed_runs": completed_count,
+                "failed_runs": failed_count,
+                "mean_score": final_eval_mean,
+            },
+        )
+        return record
 
     def _write_report(self, *, record: AgentExperimentRecord) -> Path:
         """Write a simple autonomous-experiment report artifact."""
@@ -1254,3 +1408,72 @@ def _no_improve_streak(candidates: list[RewardCandidate]) -> int:
         else:
             streak += 1
     return streak
+
+
+def _resolve_best_candidate_for_final_eval(
+    *,
+    record: AgentExperimentRecord,
+    candidates: list[RewardCandidate],
+) -> RewardCandidate | None:
+    """Return the configured best candidate for final evaluation when available."""
+
+    if record.best_candidate_id is None:
+        return _best_candidate(candidates) if len(candidates) > 0 else None
+    for candidate in candidates:
+        if candidate.candidate_id == record.best_candidate_id:
+            return candidate
+    return _best_candidate(candidates) if len(candidates) > 0 else None
+
+
+def _resolve_execution_service(
+    *,
+    default_service: ExperimentExecutionService,
+    runtime_dir: Path,
+) -> ExperimentExecutionService:
+    """Return an execution service scoped to the runtime configured by the spec."""
+
+    requested_root = runtime_dir / "runs"
+    current_root = default_service.artifact_writer.root_dir
+    if current_root == requested_root:
+        return default_service
+    return ExperimentExecutionService(artifact_writer=RunArtifactWriter(requested_root))
+
+
+def _build_runner_for_spec(
+    *,
+    spec: AgentExperimentSpec,
+    total_timesteps_override: int | None,
+    eval_runs_override: int | None,
+) -> GymnasiumExperimentRunner:
+    """Build a Gymnasium runner from spec execution settings plus optional overrides."""
+
+    ppo = spec.execution.ppo
+    humanoid_ppo_config = (
+        HumanoidPpoEvaluationConfig(
+            total_timesteps=(
+                total_timesteps_override
+                if total_timesteps_override is not None
+                else ppo.total_timesteps
+            ),
+            checkpoint_count=ppo.checkpoint_count,
+            evaluation_run_count=(
+                eval_runs_override if eval_runs_override is not None else ppo.eval_runs
+            ),
+            evaluation_episodes_per_checkpoint=ppo.eval_episodes_per_checkpoint,
+        )
+        if ppo is not None
+        else None
+    )
+    return GymnasiumExperimentRunner(humanoid_ppo_config=humanoid_ppo_config)
+
+
+def _score_from_run_metrics(metrics: dict[str, object]) -> float | None:
+    """Extract a comparable scalar score from run metrics when present."""
+
+    episode_reward = metrics.get("episode_reward")
+    if isinstance(episode_reward, (int, float)):
+        return float(episode_reward)
+    total_reward = metrics.get("total_reward")
+    if isinstance(total_reward, (int, float)):
+        return float(total_reward)
+    return None

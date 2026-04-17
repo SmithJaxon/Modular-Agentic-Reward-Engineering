@@ -38,6 +38,7 @@ budgets:
   compute:
     max_experiments: 20
     max_total_train_timesteps: 1200000
+    max_reward_generations: 80
     max_parallel_experiments: 2
 
 governance:
@@ -65,6 +66,10 @@ tool_policy:
     - request_human_feedback
   default_timeout_seconds: 5400
   max_retries_per_tool: 3
+
+agent_loop:
+  encourage_run_all_after_each_experiment: true
+  samples_per_iteration: 8
 
 execution:
   ppo:

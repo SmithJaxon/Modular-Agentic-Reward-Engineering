@@ -18,6 +18,8 @@ MetadataValue = str | int | float | bool
 
 __all__ = [
     "ActionType",
+    "AgentLoopConfig",
+    "ExecutionFinalEvaluationConfig",
     "AgentBudgetLedger",
     "AgentDecisionRecord",
     "AgentExperimentRecord",
@@ -153,6 +155,7 @@ class ComputeBudgetConfig(BaseModel):
 
     max_experiments: int = Field(default=10, ge=1)
     max_total_train_timesteps: int = Field(default=500_000, ge=0)
+    max_reward_generations: int = Field(default=32, ge=1)
     max_parallel_experiments: int = Field(default=1, ge=1)
 
 
@@ -246,6 +249,15 @@ class ToolPolicyConfig(BaseModel):
         return normalized
 
 
+class AgentLoopConfig(BaseModel):
+    """Agent-managed loop guidance for Eureka-style generation cadence."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    encourage_run_all_after_each_experiment: bool = False
+    samples_per_iteration: int = Field(default=1, ge=1)
+
+
 class ExecutionPpoConfig(BaseModel):
     """PPO execution controls for Humanoid-style experiments."""
 
@@ -265,6 +277,26 @@ class ExecutionRolloutConfig(BaseModel):
     max_episode_steps: int = Field(default=200, ge=1)
 
 
+class ExecutionFinalEvaluationConfig(BaseModel):
+    """Optional post-loop final evaluation settings for best-candidate replay."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    num_eval_runs: int = Field(default=0, ge=0)
+    seed_start: int = Field(default=1_000, ge=0)
+    total_timesteps_override: int | None = Field(default=None, ge=1)
+    eval_runs_override: int | None = Field(default=None, ge=1)
+
+    @model_validator(mode="after")
+    def validate_enabled_shape(self) -> ExecutionFinalEvaluationConfig:
+        """Require at least one final-eval run when final evaluation is enabled."""
+
+        if self.enabled and self.num_eval_runs < 1:
+            raise ValueError("execution.final_evaluation.num_eval_runs must be >= 1 when enabled")
+        return self
+
+
 class ExecutionConfig(BaseModel):
     """Execution configuration by environment family."""
 
@@ -272,6 +304,9 @@ class ExecutionConfig(BaseModel):
 
     ppo: ExecutionPpoConfig | None = None
     rollout: ExecutionRolloutConfig | None = None
+    final_evaluation: ExecutionFinalEvaluationConfig = Field(
+        default_factory=ExecutionFinalEvaluationConfig
+    )
 
 
 class OutputConfig(BaseModel):
@@ -308,6 +343,7 @@ class AgentExperimentSpec(BaseModel):
     budgets: BudgetConfig
     governance: GovernanceConfig
     tool_policy: ToolPolicyConfig
+    agent_loop: AgentLoopConfig = Field(default_factory=AgentLoopConfig)
     execution: ExecutionConfig
     outputs: OutputConfig
 
@@ -330,6 +366,7 @@ class AgentBudgetLedger(BaseModel):
     consumed_total_usd: float = 0.0
     consumed_experiments: int = 0
     consumed_train_timesteps: int = 0
+    consumed_reward_generations: int = 0
     consumed_human_feedback_requests: int = 0
 
 
