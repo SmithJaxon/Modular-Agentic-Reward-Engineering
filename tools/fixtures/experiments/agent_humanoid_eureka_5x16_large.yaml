@@ -40,7 +40,7 @@ budgets:
     max_experiments: 96
     max_total_train_timesteps: 60000000
     max_reward_generations: 80
-    max_parallel_experiments: 1
+    max_parallel_experiments: 2
 
 governance:
   stopping:
@@ -77,6 +77,8 @@ execution:
     eval_runs: 5
     checkpoint_count: 10
     eval_episodes_per_checkpoint: 1
+    n_envs: 8
+    device: auto
   final_evaluation:
     enabled: true
     num_eval_runs: 5

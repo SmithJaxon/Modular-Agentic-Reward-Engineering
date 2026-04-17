@@ -174,3 +174,44 @@ def test_spec_allows_disabling_progress_before_stop_enforcement() -> None:
     spec = AgentExperimentSpec.model_validate(payload)
 
     assert spec.agent_loop.enforce_progress_before_stop is False
+
+
+def test_spec_accepts_ppo_parallel_env_and_device_controls() -> None:
+    """Spec should accept explicit PPO parallel-env and device settings."""
+
+    payload = _minimal_valid_payload()
+    payload["execution"] = {
+        "ppo": {
+            "total_timesteps": 50000,
+            "eval_runs": 3,
+            "checkpoint_count": 10,
+            "eval_episodes_per_checkpoint": 1,
+            "n_envs": 8,
+            "device": "cuda:0",
+        }
+    }
+
+    spec = AgentExperimentSpec.model_validate(payload)
+
+    assert spec.execution.ppo is not None
+    assert spec.execution.ppo.n_envs == 8
+    assert spec.execution.ppo.device == "cuda:0"
+
+
+def test_spec_rejects_non_positive_ppo_n_envs() -> None:
+    """PPO parallel env count must be a positive integer."""
+
+    payload = _minimal_valid_payload()
+    payload["execution"] = {
+        "ppo": {
+            "total_timesteps": 50000,
+            "eval_runs": 3,
+            "checkpoint_count": 10,
+            "eval_episodes_per_checkpoint": 1,
+            "n_envs": 0,
+            "device": "auto",
+        }
+    }
+
+    with pytest.raises(ValueError, match="greater than or equal to 1"):
+        AgentExperimentSpec.model_validate(payload)

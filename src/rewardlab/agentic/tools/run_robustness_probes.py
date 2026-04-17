@@ -110,6 +110,8 @@ class RunRobustnessProbesTool:
                     checkpoint_count=ppo.checkpoint_count,
                     evaluation_run_count=ppo.eval_runs,
                     evaluation_episodes_per_checkpoint=ppo.eval_episodes_per_checkpoint,
+                    n_envs=ppo.n_envs,
+                    device=ppo.device,
                 )
                 if ppo is not None
                 else None

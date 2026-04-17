@@ -21,7 +21,7 @@ from rewardlab.experiments.execution_service import (
     ExecutionOutcome,
     ExecutionRequest,
 )
-from rewardlab.experiments.reward_program import RewardProgram
+from rewardlab.experiments.reward_program import RewardProgram, load_reward_program
 from rewardlab.schemas.runtime_status import BackendRuntimeStatus
 from rewardlab.schemas.session_config import EnvironmentBackend
 
@@ -44,6 +44,8 @@ class HumanoidPpoEvaluationConfig:
     gamma: float = 0.99
     gae_lambda: float = 0.95
     clip_range: float = 0.2
+    n_envs: int = 1
+    device: str = "auto"
 
     @classmethod
     def from_environment(cls) -> HumanoidPpoEvaluationConfig:
@@ -64,6 +66,8 @@ class HumanoidPpoEvaluationConfig:
             gamma=_float_from_env("REWARDLAB_PPO_GAMMA", 0.99),
             gae_lambda=_float_from_env("REWARDLAB_PPO_GAE_LAMBDA", 0.95),
             clip_range=_float_from_env("REWARDLAB_PPO_CLIP_RANGE", 0.2),
+            n_envs=_int_from_env("REWARDLAB_PPO_N_ENVS", 1),
+            device=_str_from_env("REWARDLAB_PPO_DEVICE", "auto"),
         )
 
     def supports_environment(self, environment_id: str) -> bool:
@@ -249,19 +253,18 @@ class GymnasiumExperimentRunner:
 
         for run_index in range(self.humanoid_ppo_config.evaluation_run_count):
             train_seed = _seed_for_run(execution_request.seed, run_index)
-            raw_training_environment = self.backend.create_environment(
-                execution_request.environment_id,
-                seed=train_seed,
-                render_mode=execution_request.render_mode,
-            )
             evaluation_environment = self.backend.create_environment(
                 execution_request.environment_id,
                 seed=train_seed,
                 render_mode=execution_request.render_mode,
             )
-            training_environment = RewardFunctionEnvironment(
-                environment=raw_training_environment,
+            training_environment = _build_training_environment(
+                backend=self.backend,
+                environment_id=execution_request.environment_id,
                 reward_program=reward_program,
+                seed=train_seed,
+                render_mode=execution_request.render_mode,
+                config=self.humanoid_ppo_config,
             )
             try:
                 trainer = trainer_factory(
@@ -295,7 +298,7 @@ class GymnasiumExperimentRunner:
                 per_run_best_metrics.append(max(run_checkpoint_metrics))
             finally:
                 self.backend.close_environment(evaluation_environment)
-                self.backend.close_environment(training_environment)
+                _close_environment(training_environment)
 
         aggregate_score = sum(per_run_best_metrics) / max(len(per_run_best_metrics), 1)
         metrics = {
@@ -628,6 +631,115 @@ def _extract_humanoid_fitness_metric(info: dict[str, Any]) -> float:
     return 0.0
 
 
+def _build_training_environment(
+    *,
+    backend: GymnasiumBackend,
+    environment_id: str,
+    reward_program: RewardProgram,
+    seed: int | None,
+    render_mode: str | None,
+    config: HumanoidPpoEvaluationConfig,
+) -> Any:
+    """Build a shaped training environment, optionally vectorized across subprocesses."""
+
+    if config.n_envs <= 1:
+        raw_environment = backend.create_environment(
+            environment_id,
+            seed=seed,
+            render_mode=render_mode,
+        )
+        return RewardFunctionEnvironment(
+            environment=raw_environment,
+            reward_program=reward_program,
+        )
+
+    environment_factory = getattr(backend, "_environment_factory", None)
+    if environment_factory is not None:
+        raise ExecutionError(
+            "PPO n_envs > 1 is not supported with injected Gymnasium environment factories; "
+            "use the default Gymnasium runtime backend or set execution.ppo.n_envs=1."
+        )
+    gym_module = getattr(backend, "_gym_module", None)
+    if gym_module is not None:
+        raise ExecutionError(
+            "PPO n_envs > 1 is not supported with injected Gymnasium modules; "
+            "use the default Gymnasium runtime backend or set execution.ppo.n_envs=1."
+        )
+
+    vector_env_cls = _vector_env_backend()
+    if vector_env_cls is None:
+        raise ExecutionError(
+            "stable_baselines3 vectorized environment utilities are unavailable; "
+            "install stable-baselines3 in the active .venv or set execution.ppo.n_envs=1."
+        )
+
+    environment_factories = [
+        _make_reward_environment_factory(
+            backend=backend,
+            environment_id=environment_id,
+            reward_program=reward_program,
+            seed=_seed_for_run(seed, env_index),
+            render_mode=render_mode,
+        )
+        for env_index in range(config.n_envs)
+    ]
+    return vector_env_cls(environment_factories)
+
+
+def _make_reward_environment_factory(
+    *,
+    backend: GymnasiumBackend,
+    environment_id: str,
+    reward_program: RewardProgram,
+    seed: int | None,
+    render_mode: str | None,
+) -> Callable[[], RewardFunctionEnvironment]:
+    """Return a subprocess-safe environment factory for vectorized PPO rollouts."""
+
+    reward_source = reward_program.source_text
+    reward_candidate_id = reward_program.candidate_id
+    entrypoint_name = reward_program.entrypoint_name
+
+    def build() -> RewardFunctionEnvironment:
+        local_reward_program = load_reward_program(
+            candidate_id=reward_candidate_id,
+            source_text=reward_source,
+            entrypoint_name=entrypoint_name,
+        )
+        local_reward_program.require_callable()
+        raw_environment = backend.create_environment(
+            environment_id,
+            seed=seed,
+            render_mode=render_mode,
+        )
+        return RewardFunctionEnvironment(
+            environment=raw_environment,
+            reward_program=local_reward_program,
+        )
+
+    return build
+
+
+def _vector_env_backend() -> Any | None:
+    """Return the SB3 SubprocVecEnv constructor when available."""
+
+    try:
+        from stable_baselines3.common.vec_env import (  # type: ignore[import-not-found]
+            SubprocVecEnv,
+        )
+    except Exception:
+        return None
+    return SubprocVecEnv
+
+
+def _close_environment(environment: Any) -> None:
+    """Close an environment handle when it provides a close method."""
+
+    close = getattr(environment, "close", None)
+    if callable(close):
+        close()
+
+
 def _default_ppo_trainer_factory() -> PpoTrainerFactory | None:
     """Return the default SB3 PPO trainer factory when the dependency is present."""
 
@@ -657,7 +769,7 @@ def _default_ppo_trainer_factory() -> PpoTrainerFactory | None:
                 gamma=config.gamma,
                 gae_lambda=config.gae_lambda,
                 clip_range=config.clip_range,
-                device="auto",
+                device=config.device,
             ),
         )
 
@@ -695,6 +807,18 @@ def _float_from_env(name: str, default: float) -> float:
         return float(raw_value)
     except ValueError:
         return default
+
+
+def _str_from_env(name: str, default: str) -> str:
+    """Read a string environment variable with a fallback value."""
+
+    raw_value = os.environ.get(name)
+    if raw_value is None:
+        return default
+    stripped = raw_value.strip()
+    if not stripped:
+        return default
+    return stripped
 
 
 def _coerce_int(value: object) -> int | None:

@@ -52,7 +52,7 @@ from rewardlab.schemas.agent_experiment import (
     AgentExperimentSpec,
     AgentExperimentStatus,
 )
-from rewardlab.schemas.experiment_run import ExecutionMode, ExperimentRun, RunStatus
+from rewardlab.schemas.experiment_run import ExecutionMode, ExperimentRun, RunStatus, RunType
 from rewardlab.schemas.feedback_entry import FeedbackEntry
 from rewardlab.schemas.reward_candidate import RewardCandidate
 from rewardlab.schemas.robustness_assessment import RobustnessAssessment
@@ -405,6 +405,7 @@ class AgentExperimentService:
                 record=record,
                 action=action,
                 candidates=candidates,
+                runs=runs,
             )
             tool_result = self.tool_broker.execute_action(
                 record=record,
@@ -834,6 +835,94 @@ class AgentExperimentService:
             consumed_tokens=result.consumed_tokens,
             consumed_usd=result.consumed_usd,
         )
+
+        if action.action_type == ActionType.RUN_EXPERIMENT:
+            run_payloads = result.payload.get("runs")
+            if isinstance(run_payloads, list):
+                parsed_runs = [
+                    ExperimentRun.model_validate(item)
+                    for item in run_payloads
+                    if isinstance(item, dict)
+                ]
+            else:
+                single_run_payload = result.payload.get("run")
+                parsed_runs = (
+                    [ExperimentRun.model_validate(single_run_payload)]
+                    if isinstance(single_run_payload, dict)
+                    else []
+                )
+
+            candidate_payloads = result.payload.get("candidates")
+            if isinstance(candidate_payloads, list):
+                updated_candidates = {
+                    candidate.candidate_id: candidate
+                    for candidate in (
+                        RewardCandidate.model_validate(item)
+                        for item in candidate_payloads
+                        if isinstance(item, dict)
+                    )
+                }
+            else:
+                single_candidate_payload = result.payload.get("candidate")
+                single_candidate = (
+                    RewardCandidate.model_validate(single_candidate_payload)
+                    if isinstance(single_candidate_payload, dict)
+                    else None
+                )
+                updated_candidates = (
+                    {single_candidate.candidate_id: single_candidate}
+                    if single_candidate is not None
+                    else {}
+                )
+
+            completed_runs = 0
+            for run in parsed_runs:
+                self.repository.save_experiment_run(run)
+                if run.status == RunStatus.COMPLETED:
+                    updated_candidate = updated_candidates.get(run.candidate_id)
+                    if updated_candidate is not None:
+                        self._save_candidate(updated_candidate)
+                    record = self._add_compute_usage(record=record, run=run)
+                    completed_runs += 1
+                    self.repository.append_event(
+                        session_id=record.experiment_id,
+                        event_type="agent_experiment.run_completed",
+                        payload={
+                            "run_id": run.run_id,
+                            "candidate_id": run.candidate_id,
+                            "score": (
+                                updated_candidate.aggregate_score
+                                if updated_candidate is not None
+                                else None
+                            ),
+                        },
+                    )
+                    continue
+                self.repository.append_event(
+                    session_id=record.experiment_id,
+                    event_type="agent_experiment.run_failed",
+                    payload={
+                        "run_id": run.run_id,
+                        "candidate_id": run.candidate_id,
+                        "failure_reason": run.failure_reason,
+                    },
+                )
+
+            if completed_runs > 0:
+                best = _best_candidate(self.list_candidates(record.experiment_id))
+                record = record.model_copy(update={"best_candidate_id": best.candidate_id})
+
+            if result.status != "ok":
+                self.repository.append_event(
+                    session_id=record.experiment_id,
+                    event_type="agent_experiment.tool_error",
+                    payload={
+                        "action": action.action_type.value,
+                        "summary": result.summary,
+                    },
+                )
+            return record, completed_runs > 0
+
         if result.status != "ok":
             self.repository.append_event(
                 session_id=record.experiment_id,
@@ -853,25 +942,6 @@ class AgentExperimentService:
                 session_id=record.experiment_id,
                 event_type="agent_experiment.candidate_proposed",
                 payload={"candidate_id": candidate.candidate_id},
-            )
-            return record, True
-
-        if action.action_type == ActionType.RUN_EXPERIMENT:
-            run = ExperimentRun.model_validate(result.payload["run"])
-            updated_candidate = RewardCandidate.model_validate(result.payload["candidate"])
-            self.repository.save_experiment_run(run)
-            self._save_candidate(updated_candidate)
-            record = self._add_compute_usage(record=record, run=run)
-            best = _best_candidate(self.list_candidates(record.experiment_id))
-            record = record.model_copy(update={"best_candidate_id": best.candidate_id})
-            self.repository.append_event(
-                session_id=record.experiment_id,
-                event_type="agent_experiment.run_completed",
-                payload={
-                    "run_id": run.run_id,
-                    "candidate_id": run.candidate_id,
-                    "score": updated_candidate.aggregate_score,
-                },
             )
             return record, True
 
@@ -1061,8 +1131,17 @@ class AgentExperimentService:
         record: AgentExperimentRecord,
         action: ControllerAction,
         candidates: list[RewardCandidate],
+        runs: list[ExperimentRun],
     ) -> ControllerAction:
-        """Attach curated context to reward-proposal actions before tool execution."""
+        """Attach curated context to run/propose actions before tool execution."""
+
+        if action.action_type == ActionType.RUN_EXPERIMENT:
+            return _contextualize_run_action_for_parallel_dispatch(
+                record=record,
+                action=action,
+                candidates=candidates,
+                runs=runs,
+            )
 
         if action.action_type != ActionType.PROPOSE_REWARD:
             return action
@@ -1543,6 +1622,88 @@ def _select_generation_parent_for_stop_gate(candidates: list[RewardCandidate]) -
     return max(candidates, key=lambda candidate: candidate.iteration_index)
 
 
+def _contextualize_run_action_for_parallel_dispatch(
+    *,
+    record: AgentExperimentRecord,
+    action: ControllerAction,
+    candidates: list[RewardCandidate],
+    runs: list[ExperimentRun],
+) -> ControllerAction:
+    """Expand run action input with pending candidates for bounded parallel dispatch."""
+
+    max_parallel = max(record.spec.budgets.compute.max_parallel_experiments, 1)
+    remaining_experiment_budget = max(
+        record.spec.budgets.compute.max_experiments - record.budget_ledger.consumed_experiments,
+        1,
+    )
+    dispatch_limit = min(max_parallel, remaining_experiment_budget)
+    if dispatch_limit <= 1:
+        return action
+
+    candidate_by_id = {candidate.candidate_id: candidate for candidate in candidates}
+    if len(candidate_by_id) == 0:
+        return action
+
+    completed_candidate_ids = {
+        run.candidate_id
+        for run in runs
+        if run.run_type == RunType.PERFORMANCE and run.status == RunStatus.COMPLETED
+    }
+    pending_candidates = sorted(
+        (
+            candidate
+            for candidate in candidates
+            if candidate.candidate_id not in completed_candidate_ids
+        ),
+        key=lambda candidate: (candidate.iteration_index, candidate.created_at),
+    )
+    if len(pending_candidates) == 0:
+        return action
+
+    requested_ids: list[str] = []
+    raw_requested_ids = action.action_input.get("candidate_ids")
+    if isinstance(raw_requested_ids, list):
+        for raw in raw_requested_ids:
+            if isinstance(raw, str):
+                cleaned = raw.strip()
+                if cleaned and cleaned in candidate_by_id and cleaned not in requested_ids:
+                    requested_ids.append(cleaned)
+    raw_single_id = action.action_input.get("candidate_id")
+    if isinstance(raw_single_id, str):
+        cleaned = raw_single_id.strip()
+        if cleaned and cleaned in candidate_by_id and cleaned not in requested_ids:
+            requested_ids.append(cleaned)
+    if len(requested_ids) == 0:
+        requested_ids.append(pending_candidates[0].candidate_id)
+
+    run_all_pending = record.spec.agent_loop.encourage_run_all_after_each_experiment
+    selected_ids: list[str] = []
+    for candidate_id in requested_ids:
+        if candidate_id in completed_candidate_ids:
+            continue
+        if candidate_id not in selected_ids:
+            selected_ids.append(candidate_id)
+        if len(selected_ids) >= dispatch_limit:
+            break
+    if run_all_pending and len(selected_ids) < dispatch_limit:
+        for candidate in pending_candidates:
+            if candidate.candidate_id in selected_ids:
+                continue
+            selected_ids.append(candidate.candidate_id)
+            if len(selected_ids) >= dispatch_limit:
+                break
+    if len(selected_ids) == 0:
+        return action
+
+    contextual_input = dict(action.action_input)
+    contextual_input["candidate_id"] = selected_ids[0]
+    if len(selected_ids) > 1:
+        contextual_input["candidate_ids"] = selected_ids
+    else:
+        contextual_input.pop("candidate_ids", None)
+    return action.model_copy(update={"action_input": contextual_input})
+
+
 def _resolve_best_candidate_for_final_eval(
     *,
     record: AgentExperimentRecord,
@@ -1593,6 +1754,8 @@ def _build_runner_for_spec(
                 eval_runs_override if eval_runs_override is not None else ppo.eval_runs
             ),
             evaluation_episodes_per_checkpoint=ppo.eval_episodes_per_checkpoint,
+            n_envs=ppo.n_envs,
+            device=ppo.device,
         )
         if ppo is not None
         else None

@@ -20,6 +20,7 @@ from rewardlab.orchestrator.session_service import ServicePaths
 from rewardlab.persistence.session_repository import RepositoryPaths, SessionRepository
 from rewardlab.schemas.agent_experiment import ActionType, AgentExperimentSpec
 from rewardlab.schemas.experiment_run import ExecutionMode, ExperimentRun, RunStatus, RunType
+from rewardlab.schemas.reward_candidate import RewardCandidate
 from rewardlab.schemas.session_config import EnvironmentBackend
 
 
@@ -453,6 +454,190 @@ def test_stop_is_blocked_until_progress_targets_or_budget_stop() -> None:
     trace = service.trace_payload(experiment_id=result.experiment_id)
     action_types = [item["action_type"] for item in trace["decisions"]]
     assert action_types == ["run_experiment", "propose_reward"]
+
+
+def test_contextualize_run_action_batches_pending_candidates_up_to_parallel_limit() -> None:
+    """Run actions should include additional pending candidates up to max_parallel_experiments."""
+
+    runtime_root = Path(".agentic-test-runtime-run-batch-context")
+    paths, repository = _service_for_runtime(runtime_root)
+    service = AgentExperimentService(
+        paths=paths,
+        repository=repository,
+        controller=FakeController(),
+        tool_broker=FakeBroker(),  # type: ignore[arg-type]
+    )
+    service.initialize()
+
+    spec_payload = load_experiment_spec(
+        Path("tools/fixtures/experiments/agent_humanoid_balanced.yaml")
+    ).model_dump(mode="python")
+    spec_payload["agent_loop"]["enforce_progress_before_stop"] = False
+    spec_payload["budgets"]["compute"]["max_parallel_experiments"] = 2
+    spec = AgentExperimentSpec.model_validate(spec_payload)
+    record = service._start_record(spec=spec, experiment_id=f"experiment-batch-{uuid4().hex[:8]}")
+
+    candidate_001 = RewardCandidate(
+        candidate_id=f"{record.experiment_id}-candidate-001",
+        session_id=record.experiment_id,
+        parent_candidate_id=f"{record.experiment_id}-candidate-000",
+        iteration_index=1,
+        reward_definition="def reward(observation):\n    return 1.0\n",
+        change_summary="sample one",
+        created_at=datetime(2026, 4, 10, 12, 1, tzinfo=UTC),
+    )
+    candidate_002 = RewardCandidate(
+        candidate_id=f"{record.experiment_id}-candidate-002",
+        session_id=record.experiment_id,
+        parent_candidate_id=f"{record.experiment_id}-candidate-000",
+        iteration_index=1,
+        reward_definition="def reward(observation):\n    return 1.1\n",
+        change_summary="sample two",
+        created_at=datetime(2026, 4, 10, 12, 2, tzinfo=UTC),
+    )
+    service._save_candidate(candidate_001)
+    service._save_candidate(candidate_002)
+
+    baseline_run = ExperimentRun(
+        run_id=f"{record.experiment_id}-run-001",
+        candidate_id=f"{record.experiment_id}-candidate-000",
+        backend=record.spec.environment.backend,
+        environment_id=record.spec.environment.id,
+        run_type=RunType.PERFORMANCE,
+        execution_mode=ExecutionMode.ACTUAL_BACKEND,
+        variant_label="default",
+        status=RunStatus.COMPLETED,
+        metrics={"episode_reward": 0.42},
+        artifact_refs=["manifest.json", "metrics.json"],
+        started_at=datetime(2026, 4, 10, 12, 0, tzinfo=UTC),
+        ended_at=datetime(2026, 4, 10, 12, 1, tzinfo=UTC),
+    )
+    action = ControllerAction(
+        action_type=ActionType.RUN_EXPERIMENT,
+        rationale="run pending samples",
+        action_input={"candidate_id": candidate_001.candidate_id},
+    )
+
+    contextualized = service._contextualize_action_for_broker(
+        record=record,
+        action=action,
+        candidates=service.list_candidates(record.experiment_id),
+        runs=[baseline_run],
+    )
+
+    assert contextualized.action_input["candidate_id"] == candidate_001.candidate_id
+    assert contextualized.action_input["candidate_ids"] == [
+        candidate_001.candidate_id,
+        candidate_002.candidate_id,
+    ]
+
+
+def test_apply_tool_result_handles_parallel_run_payloads() -> None:
+    """Run-result application should persist multiple completed runs in one action."""
+
+    runtime_root = Path(".agentic-test-runtime-run-batch-apply")
+    paths, repository = _service_for_runtime(runtime_root)
+    service = AgentExperimentService(
+        paths=paths,
+        repository=repository,
+        controller=FakeController(),
+        tool_broker=FakeBroker(),  # type: ignore[arg-type]
+    )
+    service.initialize()
+
+    spec_payload = load_experiment_spec(
+        Path("tools/fixtures/experiments/agent_cartpole_lowcost.yaml")
+    ).model_dump(mode="python")
+    spec_payload["agent_loop"]["enforce_progress_before_stop"] = False
+    spec = AgentExperimentSpec.model_validate(spec_payload)
+    record = service._start_record(spec=spec, experiment_id=f"experiment-run-batch-{uuid4().hex[:8]}")
+
+    candidate_001 = RewardCandidate(
+        candidate_id=f"{record.experiment_id}-candidate-001",
+        session_id=record.experiment_id,
+        parent_candidate_id=f"{record.experiment_id}-candidate-000",
+        iteration_index=1,
+        reward_definition="def reward(observation):\n    return 1.0\n",
+        change_summary="sample one",
+        created_at=datetime(2026, 4, 10, 12, 1, tzinfo=UTC),
+    )
+    candidate_002 = RewardCandidate(
+        candidate_id=f"{record.experiment_id}-candidate-002",
+        session_id=record.experiment_id,
+        parent_candidate_id=f"{record.experiment_id}-candidate-000",
+        iteration_index=1,
+        reward_definition="def reward(observation):\n    return 1.2\n",
+        change_summary="sample two",
+        created_at=datetime(2026, 4, 10, 12, 2, tzinfo=UTC),
+    )
+    service._save_candidate(candidate_001)
+    service._save_candidate(candidate_002)
+
+    action = ControllerAction(
+        action_type=ActionType.RUN_EXPERIMENT,
+        rationale="run both pending candidates",
+        action_input={
+            "candidate_ids": [candidate_001.candidate_id, candidate_002.candidate_id],
+        },
+    )
+    tool_result = ToolResult(
+        status="ok",
+        summary="Executed 2 parallel experiment runs for 2 candidates.",
+        payload={
+            "runs": [
+                {
+                    "run_id": f"{record.experiment_id}-run-001",
+                    "candidate_id": candidate_001.candidate_id,
+                    "backend": record.spec.environment.backend.value,
+                    "environment_id": record.spec.environment.id,
+                    "run_type": RunType.PERFORMANCE.value,
+                    "execution_mode": ExecutionMode.ACTUAL_BACKEND.value,
+                    "variant_label": "default",
+                    "status": RunStatus.COMPLETED.value,
+                    "metrics": {"episode_reward": 0.5, "train_timesteps": 100},
+                    "artifact_refs": ["manifest.json", "metrics.json"],
+                    "started_at": datetime(2026, 4, 10, 12, 1, tzinfo=UTC).isoformat(),
+                    "ended_at": datetime(2026, 4, 10, 12, 2, tzinfo=UTC).isoformat(),
+                },
+                {
+                    "run_id": f"{record.experiment_id}-run-002",
+                    "candidate_id": candidate_002.candidate_id,
+                    "backend": record.spec.environment.backend.value,
+                    "environment_id": record.spec.environment.id,
+                    "run_type": RunType.PERFORMANCE.value,
+                    "execution_mode": ExecutionMode.ACTUAL_BACKEND.value,
+                    "variant_label": "default",
+                    "status": RunStatus.COMPLETED.value,
+                    "metrics": {"episode_reward": 0.7, "train_timesteps": 100},
+                    "artifact_refs": ["manifest.json", "metrics.json"],
+                    "started_at": datetime(2026, 4, 10, 12, 2, tzinfo=UTC).isoformat(),
+                    "ended_at": datetime(2026, 4, 10, 12, 3, tzinfo=UTC).isoformat(),
+                },
+            ],
+            "candidates": [
+                {
+                    **candidate_001.model_dump(mode="json"),
+                    "aggregate_score": 0.5,
+                },
+                {
+                    **candidate_002.model_dump(mode="json"),
+                    "aggregate_score": 0.7,
+                },
+            ],
+        },
+    )
+
+    updated_record, progress_made = service._apply_tool_result(
+        record=record,
+        action=action,
+        result=tool_result,
+    )
+
+    assert progress_made is True
+    assert updated_record.budget_ledger.consumed_experiments == 2
+    assert updated_record.best_candidate_id == candidate_002.candidate_id
+    runs = service.list_runs(record.experiment_id)
+    assert len(runs) == 2
 
 
 def test_submit_feedback_then_resume_completes_loop() -> None:

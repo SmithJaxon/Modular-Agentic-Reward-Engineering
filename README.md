@@ -120,6 +120,18 @@ Hard stop reasons are still respected even with progress gating:
 - wall-clock budget exhausted
 - failed-action threshold reached
 
+PPO execution tuning (Humanoid):
+
+- `execution.ppo.n_envs`: number of parallel training environments per candidate (`1` = single env, `>1` = subprocess vectorized envs).
+- `execution.ppo.device`: SB3/PyTorch device string (`auto`, `cpu`, `cuda`, `cuda:0`, etc.).
+- `budgets.compute.max_parallel_experiments`: max number of pending candidate evaluations dispatched in parallel per `run_experiment` action.
+
+Recommended scheduling on one RTX 3090 and ~18 CPU cores:
+
+- Start with `execution.ppo.n_envs: 6` to `8`.
+- Start with `budgets.compute.max_parallel_experiments: 2`.
+- Increase only one dimension at a time (`n_envs` first, then `max_parallel_experiments`) while watching CPU saturation and GPU memory.
+
 ### Why `estimate_cost_and_risk` appears
 
 `estimate_cost_and_risk` is an analyzer action. It does not stop the run by itself. It is used to summarize budget utilization and risk before deciding the next action.
@@ -177,6 +189,8 @@ If `pip` tries to build `mujoco` from source and fails, use Python 3.12 or 3.13 
 - `REWARDLAB_PPO_EVAL_RUNS`
 - `REWARDLAB_PPO_CHECKPOINT_COUNT`
 - `REWARDLAB_PPO_EVAL_EPISODES`
+- `REWARDLAB_PPO_N_ENVS`
+- `REWARDLAB_PPO_DEVICE`
 
 ## Dev Checks
 

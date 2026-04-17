@@ -268,6 +268,8 @@ class ExecutionPpoConfig(BaseModel):
     eval_runs: int = Field(default=5, ge=1)
     checkpoint_count: int = Field(default=10, ge=1)
     eval_episodes_per_checkpoint: int = Field(default=1, ge=1)
+    n_envs: int = Field(default=1, ge=1)
+    device: str = Field(default="auto", min_length=1)
 
 
 class ExecutionRolloutConfig(BaseModel):
