@@ -2,14 +2,16 @@
 
 RewardLab is a Python CLI for reward-function iteration and autonomous experiment control.
 
-It currently supports:
+It supports:
 
-- `rewardlab experiment ...`: autonomous experiment workflow (recommended for new runs)
-- `rewardlab session ...`: legacy session pipeline
+- `rewardlab experiment ...` for autonomous experiment runs (recommended)
+- `rewardlab session ...` for the legacy session pipeline
 
-## Setup (Use One Virtual Environment)
+## Setup (Windows and Linux/macOS)
 
-Use exactly one worktree-local venv for this repo. Recommended name: `.venv`.
+Use one virtual environment per repo checkout. Recommended folder name: `.venv`.
+
+### Windows (PowerShell)
 
 ```powershell
 py -3.12 -m venv .venv
@@ -19,169 +21,158 @@ python -m pip install -r requirements.txt
 python -m pip install -e .
 ```
 
+### Linux/macOS (bash/zsh)
+
+```bash
+python3.12 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+python -m pip install -e .
+```
+
 Optional dev tooling:
 
-```powershell
+```bash
 python -m pip install -r requirements-dev.txt
 ```
 
 Important:
 
-- Do not mix commands across `.venv` and `.venv-mujoco` in one run.
-- If you already created multiple envs, pick one and use it consistently.
+- Do not mix commands across multiple venvs for one run.
+- If you accidentally created multiple envs, pick one and reinstall there.
 
-## Install Optional Runtime Extras
+## Dependency Profiles
 
-For Humanoid PPO and real Gymnasium execution:
+- `requirements.txt`: base runtime
+- `requirements-dev.txt`: base + lint/test/typecheck tooling
+- `requirements-runtime-gymnasium.txt`: base + Gymnasium MuJoCo runtime
+- `requirements-runtime-humanoid.txt`: Gymnasium runtime + Torch + SB3
+- `requirements-all.txt`: dev + Humanoid runtime bundle
 
-```powershell
+For Humanoid PPO runtime:
+
+```bash
 python -m pip install -r requirements-runtime-humanoid.txt
 ```
 
-This installs Gymnasium MuJoCo support, Torch, and Stable-Baselines3 in the active venv.
-
-Install profiles:
-
-- `requirements.txt`: base CLI/runtime
-- `requirements-dev.txt`: base + lint/test/typecheck toolchain
-- `requirements-runtime-gymnasium.txt`: base + Gymnasium MuJoCo runtime
-- `requirements-runtime-humanoid.txt`: Gymnasium runtime + PPO stack (Torch + SB3)
-- `requirements-all.txt`: dev + Humanoid runtime convenience install
-
 ## CLI Quick Check
 
-```powershell
-.\.venv\Scripts\rewardlab.exe --help
-.\.venv\Scripts\rewardlab.exe experiment --help
+After venv activation:
+
+```bash
+rewardlab --help
+rewardlab experiment --help
 ```
 
-## Run Autonomous Experiments (Beta)
+## Autonomous Experiments (Beta)
 
 Validate a spec:
 
-```powershell
-.\.venv\Scripts\rewardlab.exe experiment validate `
-  --file tools\fixtures\experiments\agent_humanoid_balanced.yaml `
-  --json
+```bash
+rewardlab experiment validate --file tools/fixtures/experiments/agent_humanoid_balanced.yaml --json
 ```
 
 Run an experiment:
 
-```powershell
-.\.venv\Scripts\rewardlab.exe experiment run `
-  --file tools\fixtures\experiments\agent_humanoid_balanced.yaml `
-  --json
+```bash
+rewardlab experiment run --file tools/fixtures/experiments/agent_humanoid_balanced.yaml --json
 ```
 
-Check status and trace:
+Status and trace:
 
-```powershell
-.\.venv\Scripts\rewardlab.exe experiment status --experiment-id <EXPERIMENT_ID> --json
-.\.venv\Scripts\rewardlab.exe experiment trace --experiment-id <EXPERIMENT_ID> --json
+```bash
+rewardlab experiment status --experiment-id <EXPERIMENT_ID> --json
+rewardlab experiment trace --experiment-id <EXPERIMENT_ID> --json
 ```
 
-Run benchmark seeds:
+Benchmark run:
 
-```powershell
-.\.venv\Scripts\rewardlab.exe experiment benchmark-run `
-  --file tools\fixtures\experiments\agent_humanoid_balanced.yaml `
-  --seed 1 --seed 2 --seed 3 `
-  --json
+```bash
+rewardlab experiment benchmark-run --file tools/fixtures/experiments/agent_humanoid_balanced.yaml --seed 1 --seed 2 --seed 3 --json
 ```
 
-## Run the Large Eureka-Style Fixture
+### Large Eureka-style fixture
 
-```powershell
-.\.venv\Scripts\rewardlab.exe experiment run `
-  --file tools\fixtures\experiments\agent_humanoid_eureka_5x16_large.yaml `
-  --json
+```bash
+rewardlab experiment run --file tools/fixtures/experiments/agent_humanoid_eureka_5x16_large.yaml --json
 ```
 
-This fixture is configured for:
+### Quick affordable fixture
 
-- 5 reward generations
-- 16 samples per generation
-- Humanoid PPO (`total_timesteps: 100000`, `eval_runs: 5`)
-- final multi-seed evaluation (`execution.final_evaluation.num_eval_runs: 5`)
+```bash
+rewardlab experiment run --file tools/fixtures/experiments/agent_humanoid_quick_affordable.yaml --json
+```
+
+## Agent Loop Controls
+
+Use these fields in spec `agent_loop` and `governance.stopping` to control when the agent keeps searching vs stops:
+
+- `agent_loop.samples_per_iteration`: reward proposals to create for each iteration target.
+- `agent_loop.encourage_run_all_after_each_experiment`: adds guidance to run pending candidates before proposing more.
+- `agent_loop.enforce_progress_before_stop` (default `true`): blocks controller/tool `stop` actions until iteration/sample targets are met, unless a hard stop policy is hit.
+- `governance.stopping.max_iterations`: iteration target/cap for the run.
+
+Hard stop reasons are still respected even with progress gating:
+
+- API token/USD budget exhausted
+- compute experiment/timestep/reward-generation budget exhausted
+- wall-clock budget exhausted
+- failed-action threshold reached
+
+### Why `estimate_cost_and_risk` appears
+
+`estimate_cost_and_risk` is an analyzer action. It does not stop the run by itself. It is used to summarize budget utilization and risk before deciding the next action.
 
 ## Legacy Session Pipeline
 
-Start a local CartPole session:
+Start:
 
-```powershell
-.\.venv\Scripts\rewardlab.exe session start `
-  --objective-file tools\fixtures\objectives\cartpole.txt `
-  --baseline-reward-file tools\fixtures\rewards\cartpole_baseline.py `
-  --environment-id CartPole-v1 `
-  --environment-backend gymnasium `
-  --no-improve-limit 3 `
-  --max-iterations 5 `
-  --feedback-gate none `
-  --json
+```bash
+rewardlab session start --objective-file tools/fixtures/objectives/cartpole.txt --baseline-reward-file tools/fixtures/rewards/cartpole_baseline.py --environment-id CartPole-v1 --environment-backend gymnasium --no-improve-limit 3 --max-iterations 5 --feedback-gate none --json
 ```
 
-Then:
+Step/stop/report:
 
-```powershell
-.\.venv\Scripts\rewardlab.exe session step --session-id <SESSION_ID> --json
-.\.venv\Scripts\rewardlab.exe session stop --session-id <SESSION_ID> --json
-.\.venv\Scripts\rewardlab.exe session report --session-id <SESSION_ID> --json
+```bash
+rewardlab session step --session-id <SESSION_ID> --json
+rewardlab session stop --session-id <SESSION_ID> --json
+rewardlab session report --session-id <SESSION_ID> --json
 ```
 
-## Output, Logs, and Artifacts
+## Output, Logs, Artifacts
 
-By default, runtime output is under `.rewardlab/`.
+Default runtime root is `.rewardlab/`:
 
-- `.\.rewardlab\metadata.sqlite3`: metadata store
-- `.\.rewardlab\events\events.jsonl`: event log stream
-- `.\.rewardlab\runs\`: per-run manifests/metrics
-- `.\.rewardlab\reports\agent_experiments\`: autonomous experiment reports
-- `.\.rewardlab\reports\agent_benchmarks\`: benchmark aggregate reports
+- `.rewardlab/metadata.sqlite3`
+- `.rewardlab/events/events.jsonl`
+- `.rewardlab/runs/`
+- `.rewardlab/reports/agent_experiments/`
+- `.rewardlab/reports/agent_benchmarks/`
 
 ## Common Errors
 
 ### `No such command 'agent'`
 
-Use:
-
-```powershell
-rewardlab experiment run --file <SPEC_PATH> --json
-```
-
-Not:
-
-```powershell
-rewardlab agent run ...
-```
+Use `rewardlab experiment run --file <SPEC_PATH> --json`, not `rewardlab agent run ...`.
 
 ### `PyYAML is required to load YAML experiment specs`
 
 Install base requirements in the active venv:
 
-```powershell
+```bash
 python -m pip install -r requirements.txt
 ```
 
-Or run JSON specs instead of YAML.
+### MuJoCo install/build errors
 
-### Two-venv confusion
-
-Symptoms: command exists in one venv, dependencies in another.
-
-Fix:
-
-1. Activate only one venv for the entire run.
-2. Reinstall requirements in that same venv.
-3. Run all `rewardlab` commands from that same shell session.
+If `pip` tries to build `mujoco` from source and fails, use Python 3.12 or 3.13 in your venv, then reinstall runtime dependencies.
 
 ## Environment Variables
 
-- `OPENAI_API_KEY`: required for model-backed paths
-- `REWARDLAB_EXECUTION_MODE`: `offline_test` or `actual_backend`
-- `REWARDLAB_REWARD_DESIGN_MODE`: `deterministic` or `openai`
-
-Humanoid PPO knobs:
-
+- `OPENAI_API_KEY`
+- `REWARDLAB_EXECUTION_MODE` (`offline_test` or `actual_backend`)
+- `REWARDLAB_REWARD_DESIGN_MODE` (`deterministic` or `openai`)
 - `REWARDLAB_PPO_TOTAL_TIMESTEPS`
 - `REWARDLAB_PPO_EVAL_RUNS`
 - `REWARDLAB_PPO_CHECKPOINT_COUNT`
@@ -189,7 +180,7 @@ Humanoid PPO knobs:
 
 ## Dev Checks
 
-```powershell
+```bash
 cd src
 pytest
 ruff check .

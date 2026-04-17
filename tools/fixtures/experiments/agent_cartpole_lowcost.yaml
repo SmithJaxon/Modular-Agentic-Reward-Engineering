@@ -67,6 +67,7 @@ tool_policy:
 agent_loop:
   encourage_run_all_after_each_experiment: false
   samples_per_iteration: 1
+  enforce_progress_before_stop: true
 
 execution:
   rollout:

@@ -104,6 +104,7 @@ def test_agentic_humanoid_mixed_actions_complete_with_full_trace() -> None:
         Path("tools/fixtures/experiments/agent_humanoid_balanced.yaml")
     ).model_dump(mode="python")
     spec_payload["budgets"]["compute"]["max_experiments"] = 3
+    spec_payload["agent_loop"]["enforce_progress_before_stop"] = False
     spec_file = runtime_root / "humanoid_mixed.json"
     spec_file.write_text(json.dumps(spec_payload), encoding="utf-8")
 
@@ -181,6 +182,7 @@ def test_agentic_multiple_proposals_from_same_parent_produce_unique_candidates()
     spec_payload = load_experiment_spec(
         Path("tools/fixtures/experiments/agent_humanoid_balanced.yaml")
     ).model_dump(mode="python")
+    spec_payload["agent_loop"]["enforce_progress_before_stop"] = False
     spec_file = runtime_root / "humanoid_multi_propose.json"
     spec_file.write_text(json.dumps(spec_payload), encoding="utf-8")
 

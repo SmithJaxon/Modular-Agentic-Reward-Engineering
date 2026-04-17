@@ -69,6 +69,7 @@ tool_policy:
 agent_loop:
   encourage_run_all_after_each_experiment: true
   samples_per_iteration: 4
+  enforce_progress_before_stop: true
 
 execution:
   ppo:

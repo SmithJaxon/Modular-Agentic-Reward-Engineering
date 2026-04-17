@@ -54,7 +54,10 @@ class PolicyEngine:
             return PolicyDecision(True, "reward_generation_budget_exhausted")
         if failed_actions >= stopping.max_failed_actions:
             return PolicyDecision(True, "failed_action_threshold_reached")
-        if non_progress_actions >= max(stopping.plateau_window, 2) * 2:
+        if (
+            not spec.agent_loop.enforce_progress_before_stop
+            and non_progress_actions >= max(stopping.plateau_window, 2) * 2
+        ):
             return PolicyDecision(True, "non_progress_action_threshold_reached")
 
         started_at = record.started_at or record.created_at
@@ -65,6 +68,9 @@ class PolicyEngine:
         latest_iteration = max((candidate.iteration_index for candidate in candidates), default=0)
         if latest_iteration >= stopping.max_iterations:
             return PolicyDecision(True, "iteration_cap_reached")
+
+        if spec.agent_loop.enforce_progress_before_stop:
+            return PolicyDecision(False, "continue")
 
         evaluated = [candidate for candidate in candidates if candidate.aggregate_score is not None]
         evaluated.sort(key=lambda candidate: candidate.iteration_index)

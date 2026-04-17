@@ -256,6 +256,7 @@ class AgentLoopConfig(BaseModel):
 
     encourage_run_all_after_each_experiment: bool = False
     samples_per_iteration: int = Field(default=1, ge=1)
+    enforce_progress_before_stop: bool = True
 
 
 class ExecutionPpoConfig(BaseModel):

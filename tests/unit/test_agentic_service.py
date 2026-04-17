@@ -184,6 +184,80 @@ class ProposeOnlyBroker:
         )
 
 
+@dataclass
+class ProgressBroker:
+    """Broker fake that can execute forced progress actions for stop-gate tests."""
+
+    def execute_action(self, **kwargs: object) -> ToolResult:
+        """Return deterministic payloads for run/propose/stop actions."""
+
+        action = kwargs["action"]
+        record = kwargs["record"]
+        candidates = kwargs["candidates"]
+        runs = kwargs["runs"]
+        action_type = action.action_type.value
+
+        if action_type == "run_experiment":
+            candidate_id = action.action_input.get("candidate_id")
+            if not isinstance(candidate_id, str):
+                candidate_id = candidates[-1].candidate_id
+            matched = next(item for item in candidates if item.candidate_id == candidate_id)
+            score = 1.0 + (0.1 * matched.iteration_index)
+            run_id = f"{record.experiment_id}-run-{len(runs) + 1:03d}"
+            run_payload = {
+                "run_id": run_id,
+                "candidate_id": matched.candidate_id,
+                "backend": record.spec.environment.backend.value,
+                "environment_id": record.spec.environment.id,
+                "run_type": RunType.PERFORMANCE.value,
+                "execution_mode": ExecutionMode.ACTUAL_BACKEND.value,
+                "variant_label": "default",
+                "status": RunStatus.COMPLETED.value,
+                "metrics": {"episode_reward": score},
+                "artifact_refs": ["manifest.json", "metrics.json"],
+                "started_at": datetime(2026, 4, 10, 12, 1, tzinfo=UTC).isoformat(),
+                "ended_at": datetime(2026, 4, 10, 12, 2, tzinfo=UTC).isoformat(),
+            }
+            candidate_payload = matched.model_dump(mode="json")
+            candidate_payload["aggregate_score"] = score
+            return ToolResult(
+                status="ok",
+                summary=f"run completed for {matched.candidate_id}",
+                payload={"run": run_payload, "candidate": candidate_payload},
+            )
+
+        if action_type == "propose_reward":
+            parent_id = action.action_input.get("parent_candidate_id")
+            if not isinstance(parent_id, str):
+                parent_id = candidates[-1].candidate_id
+            parent = next(item for item in candidates if item.candidate_id == parent_id)
+            next_index = max(item.iteration_index for item in candidates) + 1
+            candidate_id = f"{record.experiment_id}-candidate-{next_index:03d}"
+            return ToolResult(
+                status="ok",
+                summary=f"proposed {candidate_id}",
+                payload={
+                    "candidate": {
+                        "candidate_id": candidate_id,
+                        "session_id": record.experiment_id,
+                        "parent_candidate_id": parent.candidate_id,
+                        "iteration_index": next_index,
+                        "reward_definition": "def reward(observation):\n    return 1.0\n",
+                        "change_summary": "forced progress sample",
+                        "aggregate_score": None,
+                        "selected_final": False,
+                        "minor_robustness_risk_accepted": False,
+                        "created_at": datetime(2026, 4, 10, 12, 3, tzinfo=UTC).isoformat(),
+                    }
+                },
+            )
+
+        if action_type == "stop":
+            return ToolResult(status="ok", summary="stop", payload={"stop": True})
+
+        return ToolResult(status="error", summary=f"unsupported action {action_type}", payload={})
+
+
 def _service_for_runtime(runtime_root: Path) -> tuple[ServicePaths, SessionRepository]:
     """Create reusable runtime paths and repository for tests."""
 
@@ -215,9 +289,16 @@ def test_run_experiment_stops_and_writes_trace() -> None:
         tool_broker=FakeBroker(),  # type: ignore[arg-type]
     )
     service.initialize()
+    spec_payload = load_experiment_spec(
+        Path("tools/fixtures/experiments/agent_cartpole_lowcost.yaml")
+    ).model_dump(mode="python")
+    spec_payload["agent_loop"]["enforce_progress_before_stop"] = False
+    spec_file = runtime_root / "agent_stop_enabled.json"
+    runtime_root.mkdir(parents=True, exist_ok=True)
+    spec_file.write_text(json.dumps(spec_payload), encoding="utf-8")
 
     result = service.run_experiment(
-        spec_file=Path("tools/fixtures/experiments/agent_cartpole_lowcost.yaml"),
+        spec_file=spec_file,
         experiment_id=f"experiment-test-{uuid4().hex[:8]}",
     )
 
@@ -329,6 +410,51 @@ def test_reward_generation_budget_stops_loop_when_exhausted() -> None:
     assert status.consumed_reward_generations == 1
 
 
+def test_stop_is_blocked_until_progress_targets_or_budget_stop() -> None:
+    """Service should block controller STOP until iteration/sample targets are satisfied."""
+
+    runtime_root = Path(".agentic-test-runtime-stop-gate")
+    paths, repository = _service_for_runtime(runtime_root)
+    spec_payload = load_experiment_spec(
+        Path("tools/fixtures/experiments/agent_cartpole_lowcost.yaml")
+    ).model_dump(mode="python")
+    spec_payload["governance"]["stopping"]["max_iterations"] = 1
+    spec_payload["agent_loop"]["samples_per_iteration"] = 1
+    spec_payload["agent_loop"]["enforce_progress_before_stop"] = True
+    spec_file = runtime_root / "agent_stop_gate_enabled.json"
+    runtime_root.mkdir(parents=True, exist_ok=True)
+    spec_file.write_text(json.dumps(spec_payload), encoding="utf-8")
+
+    controller = SequenceController(
+        actions=[
+            ControllerAction(
+                action_type=ActionType.STOP,
+                rationale="try to stop immediately",
+                expected_value=0.0,
+                expected_cost=0.0,
+                action_input={},
+            )
+        ]
+    )
+    service = AgentExperimentService(
+        paths=paths,
+        repository=repository,
+        controller=controller,  # type: ignore[arg-type]
+        tool_broker=ProgressBroker(),  # type: ignore[arg-type]
+    )
+    service.initialize()
+    result = service.run_experiment(
+        spec_file=spec_file,
+        experiment_id=f"experiment-stop-gate-{uuid4().hex[:8]}",
+    )
+
+    assert result.status.value == "completed"
+    assert result.stop_reason == "iteration_cap_reached"
+    trace = service.trace_payload(experiment_id=result.experiment_id)
+    action_types = [item["action_type"] for item in trace["decisions"]]
+    assert action_types == ["run_experiment", "propose_reward"]
+
+
 def test_submit_feedback_then_resume_completes_loop() -> None:
     """Submitting feedback should unblock pause and allow resume to continue."""
 
@@ -343,6 +469,7 @@ def test_submit_feedback_then_resume_completes_loop() -> None:
         "feedback_gate": "one_required",
         "max_requests": 1,
     }
+    spec_payload["agent_loop"]["enforce_progress_before_stop"] = False
     spec_file = runtime_root / "agent_feedback_resume.json"
     runtime_root.mkdir(parents=True, exist_ok=True)
     spec_file.write_text(json.dumps(spec_payload), encoding="utf-8")
@@ -398,6 +525,13 @@ def test_run_benchmark_writes_aggregate_report() -> None:
 
     runtime_root = Path(".agentic-test-runtime-benchmark")
     paths, repository = _service_for_runtime(runtime_root)
+    spec_payload = load_experiment_spec(
+        Path("tools/fixtures/experiments/agent_cartpole_lowcost.yaml")
+    ).model_dump(mode="python")
+    spec_payload["agent_loop"]["enforce_progress_before_stop"] = False
+    spec_file = runtime_root / "agent_benchmark_stop_enabled.json"
+    runtime_root.mkdir(parents=True, exist_ok=True)
+    spec_file.write_text(json.dumps(spec_payload), encoding="utf-8")
     service = AgentExperimentService(
         paths=paths,
         repository=repository,
@@ -407,7 +541,7 @@ def test_run_benchmark_writes_aggregate_report() -> None:
     service.initialize()
 
     result = service.run_benchmark(
-        spec_file=Path("tools/fixtures/experiments/agent_cartpole_lowcost.yaml"),
+        spec_file=spec_file,
         seeds=[3, 5],
         benchmark_id=f"benchmark-test-{uuid4().hex[:8]}",
     )
@@ -430,6 +564,7 @@ def test_run_robustness_action_persists_assessment_and_probe_runs() -> None:
         Path("tools/fixtures/experiments/agent_cartpole_lowcost.yaml")
     ).model_dump(mode="python")
     spec_payload["tool_policy"]["allowed_tools"].append("run_robustness_probes")
+    spec_payload["agent_loop"]["enforce_progress_before_stop"] = False
     spec_file = runtime_root / "agent_robustness_enabled.json"
     runtime_root.mkdir(parents=True, exist_ok=True)
     spec_file.write_text(json.dumps(spec_payload), encoding="utf-8")
@@ -550,6 +685,7 @@ def test_final_evaluation_runs_after_completion_when_enabled() -> None:
         "agent_loop": {
             "encourage_run_all_after_each_experiment": False,
             "samples_per_iteration": 1,
+            "enforce_progress_before_stop": False,
         },
         "execution": {
             "rollout": {"max_episode_steps": 200},

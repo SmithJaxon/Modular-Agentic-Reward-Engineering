@@ -265,7 +265,10 @@ class ControllerAgent:
                 },
             )
 
-        if context.no_improve_streak >= stopping.max_no_improve_streak:
+        if (
+            not loop_cfg.enforce_progress_before_stop
+            and context.no_improve_streak >= stopping.max_no_improve_streak
+        ):
             return ControllerAction(
                 action_type=ActionType.STOP,
                 rationale="No-improvement streak reached configured threshold.",
@@ -336,6 +339,21 @@ def _build_controller_prompt(context: ControllerContext) -> str:
         if loop_cfg.encourage_run_all_after_each_experiment
         else "Guidance: Running all pending candidates is optional."
     )
+    parent_candidate = _select_generation_parent(candidates)
+    current_iteration_sample_count = sum(
+        1
+        for candidate in candidates
+        if candidate.parent_candidate_id == parent_candidate.candidate_id
+        and candidate.iteration_index == parent_candidate.iteration_index + 1
+    )
+    stop_gate_note = (
+        (
+            "Stop gate: Do not choose stop until iteration and sample targets are met; "
+            "stop is only expected after hitting limits or hard budget policy stops."
+        )
+        if loop_cfg.enforce_progress_before_stop
+        else "Stop gate: Early stop is allowed when expected gain is low."
+    )
     ppo_settings = spec.execution.ppo
     execution_note = (
         (
@@ -348,6 +366,11 @@ def _build_controller_prompt(context: ControllerContext) -> str:
         )
         if ppo_settings is not None
         else "Execution settings: rollout mode active (no PPO execution block configured)."
+    )
+    stop_choice_instruction = (
+        "Only choose stop after progress targets are met, or when hard policy limits are reached."
+        if loop_cfg.enforce_progress_before_stop
+        else "Choose stop when expected gain is low versus budget risk or plateau persists."
     )
 
     return (
@@ -370,15 +393,20 @@ def _build_controller_prompt(context: ControllerContext) -> str:
         f"timesteps={spec.budgets.compute.max_total_train_timesteps}, "
         "reward_generations="
         f"{spec.budgets.compute.max_reward_generations}\n"
+        f"Progress targets: max_iterations={spec.governance.stopping.max_iterations}, "
+        f"current_latest_iteration={latest_candidate.iteration_index}, "
+        f"samples_per_iteration={loop_cfg.samples_per_iteration}, "
+        f"current_iteration_samples={current_iteration_sample_count}\n"
         f"Agent-loop guidance: samples_per_iteration={loop_cfg.samples_per_iteration}\n"
         f"{guidance_note}\n"
+        f"{stop_gate_note}\n"
         f"{execution_note}\n"
         f"Recent candidate scores: {json.dumps(scores)}\n"
         f"Recent runs: {json.dumps(recent_runs)}\n"
         f"Allowed actions: {', '.join(_allowed_action_names(spec=spec))}\n"
         "Return JSON with keys action_type, rationale, expected_value, "
         "expected_cost, action_input.\n"
-        "Choose stop when expected gain is low versus budget risk or plateau persists.\n"
+        f"{stop_choice_instruction}\n"
     )
 
 

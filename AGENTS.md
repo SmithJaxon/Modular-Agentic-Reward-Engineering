@@ -35,6 +35,7 @@ Python 3.12: Follow standard conventions
 - After worktree creation, all edits, tests, temporary files, virtual environments, and generated artifacts for this thread MUST stay inside the active worktree.
 - The execution target is the active follow-on backlog for this thread. `specs/001-iterative-reward-design/tasks.md` and `specs/003-real-experiment-readiness/tasks.md` are complete in this worktree. The active implementation backlog is `specs/004-agent-tool-calling-architecture/`.
 - The active runtime target remains Gymnasium-only. `CartPole-v1` is the smoke path, and `Humanoid-v4` PPO evaluation is the main real-execution target while control architecture migrates from `session` pipeline to `agent_tools`.
+- Autonomous experiment stop behavior is progress-gated by default: the controller SHOULD NOT stop early before iteration/sample targets are met (`agent_loop.enforce_progress_before_stop=true`) unless a hard policy stop condition is reached (budget exhaustion, iteration cap, or repeated hard failures).
 - For each chunk, the default loop is: confirm scope, add or update tests, implement or revise code, run the smallest relevant validation set, fix failures, rerun validation, then advance only when the chunk is stable.
 - Use sub-agents aggressively for independent tasks with disjoint file ownership. Keep shared-file work, critical-path integration, and final verification in the main agent.
 - The agent SHOULD make frequent, meaningful commits during execution rather than carrying large uncommitted batches for long periods.

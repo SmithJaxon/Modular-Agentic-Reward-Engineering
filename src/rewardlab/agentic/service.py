@@ -379,6 +379,28 @@ class AgentExperimentService:
                 )
             )
             record = self._add_budget_usage(record, consumed_tokens=controller_tokens)
+            if action.action_type == ActionType.STOP:
+                stop_block_reason = _controller_stop_block_reason(
+                    record=record,
+                    candidates=candidates,
+                )
+                if stop_block_reason is not None:
+                    replacement = _required_progress_action(
+                        record=record,
+                        candidates=candidates,
+                        runs=runs,
+                        reason=stop_block_reason,
+                    )
+                    self.repository.append_event(
+                        session_id=record.experiment_id,
+                        event_type="agent_experiment.stop_blocked",
+                        payload={
+                            "reason": stop_block_reason,
+                            "requested_action_type": action.action_type.value,
+                            "replacement_action_type": replacement.action_type.value,
+                        },
+                    )
+                    action = replacement
             broker_action = self._contextualize_action_for_broker(
                 record=record,
                 action=action,
@@ -422,10 +444,25 @@ class AgentExperimentService:
             self._save_record(record)
 
             if action.action_type == ActionType.STOP or bool(tool_result.payload.get("stop")):
-                record = self._complete_record(record, reason="controller_stop")
-                record = self._run_final_evaluation(record=record)
-                report_path = self._write_report(record=record)
-                break
+                stop_block_reason = _controller_stop_block_reason(
+                    record=record,
+                    candidates=self.list_candidates(record.experiment_id),
+                )
+                if stop_block_reason is None:
+                    record = self._complete_record(record, reason="controller_stop")
+                    record = self._run_final_evaluation(record=record)
+                    report_path = self._write_report(record=record)
+                    break
+                self.repository.append_event(
+                    session_id=record.experiment_id,
+                    event_type="agent_experiment.stop_blocked",
+                    payload={
+                        "reason": stop_block_reason,
+                        "requested_action_type": action.action_type.value,
+                        "replacement_action_type": None,
+                        "tool_requested_stop": bool(tool_result.payload.get("stop")),
+                    },
+                )
 
             if record.status == AgentExperimentStatus.PAUSED:
                 report_path = self._write_report(record=record)
@@ -1408,6 +1445,102 @@ def _no_improve_streak(candidates: list[RewardCandidate]) -> int:
         else:
             streak += 1
     return streak
+
+
+def _controller_stop_block_reason(
+    *,
+    record: AgentExperimentRecord,
+    candidates: list[RewardCandidate],
+) -> str | None:
+    """Return stop-block reason when progress gate requires continuing the search."""
+
+    loop_cfg = record.spec.agent_loop
+    if not loop_cfg.enforce_progress_before_stop:
+        return None
+    if len(candidates) == 0:
+        return None
+
+    latest_iteration = max(candidate.iteration_index for candidate in candidates)
+    target_iterations = record.spec.governance.stopping.max_iterations
+    reasons: list[str] = []
+    if latest_iteration < target_iterations:
+        reasons.append(
+            f"latest_iteration={latest_iteration} < max_iterations={target_iterations}"
+        )
+
+    parent = _select_generation_parent_for_stop_gate(candidates)
+    sample_count = sum(
+        1
+        for candidate in candidates
+        if candidate.parent_candidate_id == parent.candidate_id
+        and candidate.iteration_index == parent.iteration_index + 1
+    )
+    sample_target = loop_cfg.samples_per_iteration
+    if sample_count < sample_target:
+        reasons.append(
+            f"sample_count={sample_count} < samples_per_iteration={sample_target}"
+        )
+    return "; ".join(reasons) if len(reasons) > 0 else None
+
+
+def _required_progress_action(
+    *,
+    record: AgentExperimentRecord,
+    candidates: list[RewardCandidate],
+    runs: list[ExperimentRun],
+    reason: str,
+) -> ControllerAction:
+    """Return a required progress action when stop is blocked by loop progress gate."""
+
+    completed_candidate_ids = {
+        run.candidate_id
+        for run in runs
+        if run.run_type.value == "performance" and run.status.value == "completed"
+    }
+    pending = [
+        candidate
+        for candidate in candidates
+        if candidate.candidate_id not in completed_candidate_ids
+    ]
+    if len(pending) > 0:
+        target = min(pending, key=lambda candidate: (candidate.iteration_index, candidate.created_at))
+        return ControllerAction(
+            action_type=ActionType.RUN_EXPERIMENT,
+            rationale=(
+                "Stop blocked by progress gate "
+                f"({reason}); running pending candidate {target.candidate_id}."
+            ),
+            expected_value=0.6,
+            expected_cost=0.5,
+            action_input={"candidate_id": target.candidate_id},
+        )
+
+    parent = _select_generation_parent_for_stop_gate(candidates)
+    return ControllerAction(
+        action_type=ActionType.PROPOSE_REWARD,
+        rationale=(
+            "Stop blocked by progress gate "
+            f"({reason}); proposing another sample from {parent.candidate_id}."
+        ),
+        expected_value=0.5,
+        expected_cost=0.2,
+        action_input={"parent_candidate_id": parent.candidate_id},
+    )
+
+
+def _select_generation_parent_for_stop_gate(candidates: list[RewardCandidate]) -> RewardCandidate:
+    """Return parent candidate for sample-target progress checks and forced proposals."""
+
+    evaluated = [candidate for candidate in candidates if candidate.aggregate_score is not None]
+    if len(evaluated) > 0:
+        return max(
+            evaluated,
+            key=lambda candidate: (
+                candidate.aggregate_score if candidate.aggregate_score is not None else float("-inf"),
+                candidate.iteration_index,
+            ),
+        )
+    return max(candidates, key=lambda candidate: candidate.iteration_index)
 
 
 def _resolve_best_candidate_for_final_eval(

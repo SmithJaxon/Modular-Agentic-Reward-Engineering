@@ -151,3 +151,26 @@ def test_spec_rejects_final_evaluation_when_enabled_with_zero_runs() -> None:
         match="execution.final_evaluation.num_eval_runs must be >= 1 when enabled",
     ):
         AgentExperimentSpec.model_validate(payload)
+
+
+def test_spec_defaults_to_enforcing_progress_before_stop() -> None:
+    """Agent loop should default to enforcing minimum progress before STOP actions."""
+
+    spec = AgentExperimentSpec.model_validate(_minimal_valid_payload())
+
+    assert spec.agent_loop.enforce_progress_before_stop is True
+
+
+def test_spec_allows_disabling_progress_before_stop_enforcement() -> None:
+    """Spec should accept explicit opt-out for progress-before-stop enforcement."""
+
+    payload = _minimal_valid_payload()
+    payload["agent_loop"] = {
+        "encourage_run_all_after_each_experiment": False,
+        "samples_per_iteration": 1,
+        "enforce_progress_before_stop": False,
+    }
+
+    spec = AgentExperimentSpec.model_validate(payload)
+
+    assert spec.agent_loop.enforce_progress_before_stop is False
