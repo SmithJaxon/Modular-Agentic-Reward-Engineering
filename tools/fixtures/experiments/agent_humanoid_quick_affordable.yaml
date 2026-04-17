@@ -1,0 +1,86 @@
+version: 1
+experiment_name: humanoid_agent_quick_affordable
+objective: >
+  Improve Humanoid forward locomotion above baseline with a constrained,
+  lower-cost search budget that can usually finish within a few hours.
+
+environment:
+  backend: gymnasium
+  id: Humanoid-v4
+  seed: 21
+
+baseline_reward:
+  mode: file
+  path: tools/fixtures/rewards/humanoid_baseline.py
+  entrypoint_name: reward
+
+models:
+  controller:
+    model: gpt-5-nano
+    reasoning_effort: low
+    max_completion_tokens: 4000
+  reward_designer:
+    model: gpt-5-mini
+    reasoning_effort: medium
+    max_completion_tokens: 8000
+  analyzer:
+    model: gpt-5-nano
+    reasoning_effort: low
+    max_completion_tokens: 3000
+
+budgets:
+  api:
+    max_total_tokens: 600000
+    max_total_usd: 15.0
+    max_completion_tokens_per_call: 8000
+  time:
+    max_wall_clock_minutes: 180
+  compute:
+    max_experiments: 20
+    max_total_train_timesteps: 6000000
+    max_reward_generations: 16
+    max_parallel_experiments: 1
+
+governance:
+  stopping:
+    max_iterations: 4
+    plateau_window: 2
+    min_relative_improvement: 0.01
+    max_no_improve_streak: 4
+    max_failed_actions: 4
+  human_feedback:
+    allow: false
+    feedback_gate: none
+    max_requests: 0
+
+tool_policy:
+  allowed_tools:
+    - run_experiment
+    - summarize_run_artifacts
+    - propose_reward_revision
+    - validate_reward_program
+    - compare_candidates
+    - estimate_cost_and_risk
+    - stop_or_continue_recommendation
+  default_timeout_seconds: 5400
+  max_retries_per_tool: 1
+
+agent_loop:
+  encourage_run_all_after_each_experiment: true
+  samples_per_iteration: 4
+
+execution:
+  ppo:
+    total_timesteps: 75000
+    eval_runs: 3
+    checkpoint_count: 10
+    eval_episodes_per_checkpoint: 1
+  final_evaluation:
+    enabled: true
+    num_eval_runs: 3
+    seed_start: 1000
+
+outputs:
+  runtime_dir: .rewardlab
+  report_detail: full
+  save_decision_trace: true

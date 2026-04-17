@@ -1,0 +1,8 @@
+-r requirements.txt
+hypothesis>=6.112,<7.0
+jsonschema>=4.23,<5.0
+mypy>=1.11,<2.0
+pytest>=8.3,<9.0
+pytest-cov>=5.0,<6.0
+pytest-xdist>=3.6,<4.0
+ruff>=0.6,<1.0

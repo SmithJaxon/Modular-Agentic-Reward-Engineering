@@ -55,6 +55,19 @@ Python 3.12: Follow standard conventions
 - User input is REQUIRED when an OpenAI API key or other paid credential is needed. The agent should prompt the user to populate `.env` at that point and should not proceed with paid execution beforehand.
 - User input is REQUIRED before destructive actions that could irreversibly remove user-authored data or overwrite unexpected third-party changes.
 
+## Dependency Files Policy
+
+- The project dependency manifests are:
+  - `pyproject.toml` (source of truth for package metadata and extras)
+  - `requirements.txt` (base runtime mirror of `[project].dependencies`)
+  - `requirements-dev.txt` (base + dev tooling)
+  - `requirements-runtime-gymnasium.txt` (base + Gymnasium MuJoCo runtime)
+  - `requirements-runtime-humanoid.txt` (Gymnasium runtime + Torch + SB3 PPO stack)
+  - `requirements-all.txt` (dev + Humanoid runtime convenience install)
+- When adding, removing, or changing dependency pins, update `pyproject.toml` and every affected `requirements*.txt` file in the same change.
+- If a new dependency profile is introduced, create a dedicated `requirements-<profile>.txt` file and document it in `README.md` and in this policy section.
+- Keep version ranges aligned across files unless there is a documented, intentional reason to diverge.
+
 ## API Cost Controls
 
 - Prefer offline fixtures, mocks, schema checks, and local integration coverage before any paid API call.

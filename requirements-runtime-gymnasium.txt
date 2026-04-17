@@ -1,0 +1,2 @@
+-r requirements.txt
+gymnasium[mujoco]>=1.2,<2.0
