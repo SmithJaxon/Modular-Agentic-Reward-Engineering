@@ -22,6 +22,36 @@ fi
 PYTHON_VER="$($REWARDLAB_ISAAC_WORKER_VENV/bin/python -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
 SITE_PACKAGES="$REWARDLAB_ISAAC_WORKER_VENV/lib/python${PYTHON_VER}/site-packages"
 
+# Verify isaacgymenvs is importable from the worker environment and not bound to /tmp.
+ISAACGYMENVS_PATH="$($REWARDLAB_ISAAC_WORKER_VENV/bin/python - <<'PY'
+import json
+import os
+import sys
+
+try:
+    import isaacgymenvs
+except Exception as exc:
+    print(json.dumps({"ok": False, "error": f"{type(exc).__name__}: {exc}"}))
+    sys.exit(0)
+
+path = os.path.abspath(getattr(isaacgymenvs, "__file__", ""))
+print(json.dumps({"ok": True, "path": path}))
+PY
+)"
+
+if [ "$(printf '%s' "$ISAACGYMENVS_PATH" | python3 -c 'import json,sys; d=json.load(sys.stdin); print("1" if d.get("ok") else "0")')" != "1" ]; then
+  echo "ERROR: isaacgymenvs is not importable in worker env: $ISAACGYMENVS_PATH" >&2
+  echo "Fix: install isaacgymenvs into .venv-isaac from a persistent path (not /tmp)." >&2
+  exit 1
+fi
+
+ISAACGYMENVS_FILE="$(printf '%s' "$ISAACGYMENVS_PATH" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("path",""))')"
+if [[ "$ISAACGYMENVS_FILE" == /tmp/* ]]; then
+  echo "ERROR: isaacgymenvs resolves to ephemeral path: $ISAACGYMENVS_FILE" >&2
+  echo "Fix: reinstall isaacgymenvs from a persistent location under PROJECT_ROOT." >&2
+  exit 1
+fi
+
 # Prefer full vendor IsaacGym tree when available so gymtorch sources exist.
 VENDOR_ISAAC_SRC="$PROJECT_ROOT/tools/vendor/isaacgym/python/isaacgym"
 if [ -f "$VENDOR_ISAAC_SRC/_bindings/src/gymtorch/gymtorch.cpp" ]; then
@@ -59,6 +89,7 @@ if [ ! -f "$ISAAC_STAGE/isaacgym/_bindings/src/gymtorch/gymtorch.cpp" ]; then
 fi
 
 echo "[isaac-env] worker venv: $REWARDLAB_ISAAC_WORKER_VENV"
+echo "[isaac-env] isaacgymenvs: $ISAACGYMENVS_FILE"
 echo "[isaac-env] isaac source: $ISAAC_SRC"
 echo "[isaac-env] staged isaacgym: $ISAAC_STAGE/isaacgym"
 echo "[isaac-env] worker command: $REWARDLAB_ISAAC_WORKER_COMMAND"
