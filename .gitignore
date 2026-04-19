@@ -20,6 +20,10 @@ __pycache__/
 .agentic-test-runtime*/
 .venv/
 venv/
+.venv*
+venv*
+.venv/*
+venv/*
 .rewardlab*/
 src/rewardlab.egg-info/
 tools/vendor/
