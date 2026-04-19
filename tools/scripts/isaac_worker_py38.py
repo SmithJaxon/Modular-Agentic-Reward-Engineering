@@ -88,6 +88,126 @@ def _load_isaac_runtime(cfg_dir_override: Optional[str] = None) -> Tuple[Any, An
     return torch, isaacgymenvs, cfg_dir, tasks
 
 
+def _compose_task_cfg(
+    *,
+    task: str,
+    num_envs: int,
+    sim_device: str,
+    rl_device: str,
+    headless: bool,
+    force_render: bool,
+    cfg_dir: str,
+) -> Any:
+    try:
+        import hydra
+        from hydra import compose, initialize_config_dir
+        from hydra.core.hydra_config import HydraConfig
+    except Exception:
+        return None
+
+    if HydraConfig.initialized():
+        hydra.core.global_hydra.GlobalHydra.instance().clear()
+
+    overrides = [
+        "task=%s" % task,
+        "num_envs=%s" % num_envs,
+        "sim_device=%s" % sim_device,
+        "rl_device=%s" % rl_device,
+        "pipeline=cpu",
+        "headless=%s" % ("true" if headless else "false"),
+        "force_render=%s" % ("true" if force_render else "false"),
+    ]
+    with initialize_config_dir(config_dir=cfg_dir):
+        return compose(config_name="config", overrides=overrides)
+
+
+def _supported_keyword_parameters(callable_obj: Any) -> Optional[set[str]]:
+    try:
+        parameters = inspect.signature(callable_obj).parameters.values()
+    except (TypeError, ValueError):
+        return None
+    if any(parameter.kind == inspect.Parameter.VAR_KEYWORD for parameter in parameters):
+        return None
+    return {parameter.name for parameter in parameters}
+
+
+def _unexpected_keyword_argument(exc: TypeError, keyword: str) -> bool:
+    message = str(exc)
+    return (
+        ("unexpected keyword argument '%s'" % keyword) in message
+        or ('unexpected keyword argument "%s"' % keyword) in message
+    )
+
+
+def _make_environment(
+    isaacgymenvs: Any,
+    *,
+    seed: Optional[int],
+    environment_id: str,
+    num_envs: int,
+    sim_device: str,
+    rl_device: str,
+    headless: bool,
+    force_render: bool,
+    virtual_screen_capture: bool,
+    cfg_dir: str,
+) -> Any:
+    make_fn = isaacgymenvs.make
+    base_kwargs = {
+        "seed": seed,
+        "task": environment_id,
+        "num_envs": max(num_envs, 1),
+        "sim_device": sim_device,
+        "rl_device": rl_device,
+        "headless": headless,
+        "force_render": force_render,
+        "virtual_screen_capture": virtual_screen_capture,
+    }
+    cfg = _compose_task_cfg(
+        task=environment_id,
+        num_envs=max(num_envs, 1),
+        sim_device=sim_device,
+        rl_device=rl_device,
+        headless=headless,
+        force_render=force_render,
+        cfg_dir=cfg_dir,
+    )
+
+    supported_parameters = _supported_keyword_parameters(make_fn)
+    if supported_parameters is not None:
+        kwargs = {
+            key: value for key, value in base_kwargs.items() if key in supported_parameters
+        }
+        if cfg is not None and "cfg" in supported_parameters:
+            kwargs["cfg"] = cfg
+        elif "cfg_dir" in supported_parameters:
+            kwargs["cfg_dir"] = cfg_dir
+        return make_fn(**kwargs)
+
+    attempts: List[Dict[str, Any]] = []
+    if cfg is not None:
+        attempts.append(dict(base_kwargs, cfg=cfg))
+    attempts.append(dict(base_kwargs, cfg_dir=cfg_dir))
+    attempts.append(dict(base_kwargs))
+
+    last_error: Optional[TypeError] = None
+    for kwargs in attempts:
+        try:
+            return make_fn(**kwargs)
+        except TypeError as exc:
+            last_error = exc
+            if (
+                _unexpected_keyword_argument(exc, "cfg")
+                or _unexpected_keyword_argument(exc, "cfg_dir")
+            ):
+                continue
+            raise
+
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError("Isaac Gym environment factory did not return an environment")
+
+
 def _healthcheck_payload() -> Dict[str, Any]:
     checks: Dict[str, Any] = {
         "python_executable": os.path.realpath(os.sys.executable),
@@ -589,10 +709,11 @@ def _execute(payload: Dict[str, Any]) -> Dict[str, Any]:
     n_envs = int(policy_config.get("n_envs", 8))
     configured_device = str(policy_config.get("device", "auto"))
     device = _resolve_device(configured_device, torch)
-    environment = isaacgymenvs.make(
+    environment = _make_environment(
+        isaacgymenvs,
         seed=seed,
-        task=environment_id,
-        num_envs=max(n_envs, 1),
+        environment_id=environment_id,
+        num_envs=n_envs,
         sim_device=device,
         rl_device=device,
         headless=True,
