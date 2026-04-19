@@ -33,6 +33,22 @@ def _ensure_torch_compile_compat() -> None:
         torch.compile = lambda fn=None, *args, **kwargs: fn  # type: ignore[attr-defined]
 
 
+def _ensure_numpy_legacy_aliases() -> None:
+    """Backfill deprecated numpy scalar aliases required by legacy IsaacGymEnvs code."""
+    import numpy as np
+
+    aliases = {
+        "bool": bool,
+        "int": int,
+        "float": float,
+        "complex": complex,
+        "object": object,
+    }
+    for name, fallback in aliases.items():
+        if not hasattr(np, name):
+            setattr(np, name, fallback)
+
+
 def _resolve_cfg_dir(isaacgymenvs_module: Any, cfg_dir_override: Optional[str]) -> str:
     explicit = (
         (cfg_dir_override or "").strip()
@@ -61,6 +77,7 @@ def _resolve_cfg_dir(isaacgymenvs_module: Any, cfg_dir_override: Optional[str]) 
 
 def _load_isaac_runtime(cfg_dir_override: Optional[str] = None) -> Tuple[Any, Any, str, List[str]]:
     import isaacgym  # noqa: F401
+    _ensure_numpy_legacy_aliases()
     import isaacgymenvs
     import torch
     from isaacgymenvs.tasks import isaacgym_task_map

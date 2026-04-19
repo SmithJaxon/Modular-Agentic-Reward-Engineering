@@ -476,8 +476,17 @@ def _probe_isaac_worker_health(worker_command: list[str], *, task_ids: list[str]
             "error": "worker healthcheck returned empty stdout",
             "checks": {},
         }
+    json_payload = _extract_json_payload(stdout_text)
+    if json_payload is None:
+        return {
+            "status": "error",
+            "error": "worker healthcheck stdout did not contain a JSON payload",
+            "stdout_tail": _tail_lines(stdout_text),
+            "stderr_tail": _tail_lines(stderr_text),
+            "checks": {},
+        }
     try:
-        payload = json.loads(stdout_text)
+        payload = json.loads(json_payload)
     except json.JSONDecodeError as exc:
         return {
             "status": "error",
@@ -503,6 +512,28 @@ def _probe_isaac_worker_health(worker_command: list[str], *, task_ids: list[str]
         "runtime_status": payload.get("runtime_status"),
         "checks": checks,
     }
+
+
+def _extract_json_payload(stdout_text: str) -> str | None:
+    """Extract the most relevant JSON object from mixed stdout logs."""
+
+    if not stdout_text:
+        return None
+    stripped = stdout_text.strip()
+    if stripped.startswith("{") and stripped.endswith("}"):
+        return stripped
+    for line in reversed(stripped.splitlines()):
+        candidate = line.strip()
+        if not candidate:
+            continue
+        if not (candidate.startswith("{") and candidate.endswith("}")):
+            continue
+        try:
+            json.loads(candidate)
+            return candidate
+        except json.JSONDecodeError:
+            continue
+    return None
 
 
 def _tail_lines(text: str, count: int = 20) -> str:
