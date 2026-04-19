@@ -14,8 +14,7 @@ import subprocess
 import sys
 import tempfile
 from collections.abc import Sequence
-from dataclasses import asdict
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
@@ -284,7 +283,7 @@ def _run_isolated_subprocess(
 
         try:
             worker_cmd = resolve_worker_command(subprocess_config)
-            completed = subprocess.run(
+            completed = subprocess.run(  # noqa: S603 - worker command is an explicit config/env path
                 worker_cmd
                 + [
                     "--request",
@@ -388,12 +387,16 @@ def _runtime_status_from_payload(payload: dict[str, Any]) -> Any:
     return BackendRuntimeStatus.model_validate(payload)
 
 
-def _tail_lines(text: str, line_count: int) -> str:
-    """Return the last N lines from text for compact error surfaces."""
+def _tail_lines(text: str | bytes | bytearray | None, line_count: int) -> str:
+    """Return the last N lines from subprocess output for compact error surfaces."""
 
-    if not text:
+    if text is None or text == "":
         return "<empty>"
-    lines = text.splitlines()
+    if isinstance(text, (bytes, bytearray)):
+        normalized = text.decode("utf-8", errors="replace")
+    else:
+        normalized = str(text)
+    lines = normalized.splitlines()
     if len(lines) <= line_count:
         return "\n".join(lines)
     return "\n".join(lines[-line_count:])
@@ -563,7 +566,7 @@ def _policy_gradient_step(
         return
     returns: list[Any] = []
     running = torch.zeros_like(rewards[-1])
-    for reward, done in zip(reversed(rewards), reversed(dones)):
+    for reward, done in zip(reversed(rewards), reversed(dones), strict=False):
         running = reward + gamma * running * (1.0 - done.float())
         returns.append(running)
     returns.reverse()
