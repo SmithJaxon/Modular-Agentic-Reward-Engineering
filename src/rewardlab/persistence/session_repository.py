@@ -7,7 +7,7 @@ Last Updated: 2026-04-02
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -24,7 +24,7 @@ ROBUSTNESS_ASSESSMENTS_NAMESPACE = "robustness_assessments"
 def _utc_now_iso() -> str:
     """Return the current UTC time as an ISO-formatted string."""
 
-    return datetime.now(UTC).isoformat()
+    return datetime.now(timezone.utc).isoformat()
 
 
 @dataclass(frozen=True)
@@ -196,4 +196,5 @@ def _sort_timestamp(
 ) -> datetime:
     """Resolve a stable timestamp for ordering persisted experiment runs."""
 
-    return started_at or ended_at or datetime(1970, 1, 1, tzinfo=UTC)
+    return started_at or ended_at or datetime(1970, 1, 1, tzinfo=timezone.utc)
+

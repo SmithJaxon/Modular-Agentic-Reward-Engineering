@@ -7,7 +7,7 @@ Last Updated: 2026-04-02
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from rewardlab.schemas.session_config import SessionRecord, SessionStatus, StopReason
 
@@ -48,7 +48,7 @@ def apply_transition(record: SessionRecord, request: TransitionRequest) -> Sessi
     if not can_transition(record.status, request.next_status):
         raise ValueError(f"invalid transition: {record.status} -> {request.next_status}")
 
-    occurred_at = request.occurred_at or datetime.now(UTC)
+    occurred_at = request.occurred_at or datetime.now(timezone.utc)
     updates: dict[str, object] = {
         "status": request.next_status,
         "best_candidate_id": request.best_candidate_id or record.best_candidate_id,
@@ -77,3 +77,4 @@ def _default_stop_reason(status: SessionStatus) -> StopReason:
     if status == SessionStatus.FAILED:
         return StopReason.ERROR
     raise ValueError(f"status {status} does not have a default stop reason")
+

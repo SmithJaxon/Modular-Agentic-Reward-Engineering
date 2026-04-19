@@ -7,7 +7,7 @@ Last Updated: 2026-04-10
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Literal, cast
 
 from rewardlab.agentic.contracts import ToolResult
@@ -39,7 +39,7 @@ class EstimateCostAndRiskTool:
         spec = record.spec
         ledger = record.budget_ledger
         started_at = record.started_at or record.created_at
-        elapsed_minutes = max((datetime.now(UTC) - started_at).total_seconds() / 60.0, 0.0)
+        elapsed_minutes = max((datetime.now(timezone.utc) - started_at).total_seconds() / 60.0, 0.0)
 
         limits = {
             "tokens": float(spec.budgets.api.max_total_tokens),
@@ -196,3 +196,4 @@ def _coerce_reasoning(value: str) -> Literal["minimal", "low", "medium", "high"]
     if normalized in {"minimal", "low", "medium", "high"}:
         return cast(Literal["minimal", "low", "medium", "high"], normalized)
     return "medium"
+

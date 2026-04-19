@@ -7,8 +7,8 @@ Last Updated: 2026-04-02
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
-from enum import StrEnum
+from datetime import datetime, timezone
+from rewardlab.utils.compat import StrEnum
 from pathlib import Path
 from uuid import uuid4
 
@@ -256,7 +256,7 @@ class SessionService:
                 baseline_reward=baseline_reward,
             )
 
-        started_at = datetime.now(UTC)
+        started_at = datetime.now(timezone.utc)
         baseline_candidate = RewardCandidate(
             candidate_id=f"{actual_session_id}-candidate-000",
             session_id=actual_session_id,
@@ -1176,7 +1176,7 @@ def _latest_assessment_map(
 def _default_session_id() -> str:
     """Return a UTC timestamp-based session identifier."""
 
-    timestamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S-%f")
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f")
     return f"session-{timestamp}-{uuid4().hex[:8]}"
 
 
@@ -1273,3 +1273,5 @@ def _optional_reward_designer_metadata(iteration_engine: IterationEngine) -> dic
     if isinstance(model, str) and model:
         return {"reward_designer_model": model}
     return {}
+
+

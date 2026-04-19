@@ -6,7 +6,7 @@ Last Updated: 2026-04-02
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -24,7 +24,7 @@ class ReflectionRecord(BaseModel):
     summary: str = Field(min_length=1)
     proposed_changes: list[str] = Field(min_length=1)
     confidence: float = Field(ge=0.0, le=1.0, default=0.5)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     @field_validator("reflection_id", "candidate_id", "summary")
     @classmethod
@@ -70,3 +70,4 @@ class ReflectionRecord(BaseModel):
         if not self.proposed_changes:
             raise ValueError("proposed_changes must not be empty")
         return self
+

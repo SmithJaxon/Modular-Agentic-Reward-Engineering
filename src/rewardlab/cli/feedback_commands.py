@@ -7,7 +7,11 @@ Last Updated: 2026-04-02
 from __future__ import annotations
 
 import json
-from typing import Annotated
+from typing import Optional
+try:
+    from typing import Annotated
+except ImportError:  # pragma: no cover - Python <3.9 compatibility
+    from typing_extensions import Annotated
 
 import typer
 
@@ -46,8 +50,8 @@ def submit_human_feedback(
     session_id: Annotated[str, typer.Option(...)],
     candidate_id: Annotated[str, typer.Option(...)],
     comment: Annotated[str, typer.Option(...)],
-    score: Annotated[float | None, typer.Option()] = None,
-    artifact_ref: Annotated[str | None, typer.Option()] = None,
+    score: Annotated[Optional[float], typer.Option()] = None,
+    artifact_ref: Annotated[Optional[str], typer.Option()] = None,
     json_output: Annotated[bool, typer.Option("--json")] = False,
 ) -> None:
     """Attach human feedback to a candidate."""

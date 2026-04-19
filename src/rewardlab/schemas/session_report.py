@@ -6,7 +6,7 @@ Last Updated: 2026-04-02
 
 from __future__ import annotations
 
-from enum import StrEnum
+from rewardlab.utils.compat import StrEnum
 from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -106,3 +106,4 @@ class SessionReport(BaseModel):
             )
             raise ValueError(msg)
         return self
+

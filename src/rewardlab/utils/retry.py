@@ -9,6 +9,9 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from time import sleep
+from typing import TypeVar
+
+T = TypeVar("T")
 
 
 @dataclass(frozen=True)
@@ -65,7 +68,7 @@ def compute_backoff_delays(policy: RetryPolicy) -> list[float]:
     return delays
 
 
-def retry_call[T](
+def retry_call(
     operation: Callable[[], T],
     *,
     policy: RetryPolicy | None = None,
@@ -90,7 +93,7 @@ def retry_call[T](
     raise RetryError("retry attempts exhausted", failures)
 
 
-def retry_each[T](
+def retry_each(
     operations: Iterable[Callable[[], T]],
     *,
     policy: RetryPolicy | None = None,

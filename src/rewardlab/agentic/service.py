@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal, cast
 from uuid import uuid4
@@ -39,12 +39,13 @@ from rewardlab.agentic.tools import (
     ValidateRewardProgramTool,
 )
 from rewardlab.experiments.artifacts import RunArtifactWriter
-from rewardlab.experiments.execution_service import ExecutionRequest, ExperimentExecutionService
-from rewardlab.experiments.gymnasium_runner import (
-    GymnasiumExperimentRunner,
-    HumanoidPpoEvaluationConfig,
+from rewardlab.experiments.execution_service import (
+    ExecutionRequest,
+    ExperimentExecutionService,
+    ExperimentRunner,
 )
 from rewardlab.experiments.reward_program import load_reward_program
+from rewardlab.experiments.runner_factory import build_runner
 from rewardlab.feedback.human_feedback_service import HumanFeedbackService
 from rewardlab.llm.openai_client import OpenAIClient
 from rewardlab.orchestrator.reward_designer import (
@@ -291,7 +292,7 @@ class AgentExperimentService:
         specs_dir = benchmark_data_dir / "specs"
         specs_dir.mkdir(parents=True, exist_ok=True)
 
-        started_at = datetime.now(UTC).isoformat()
+        started_at = datetime.now(timezone.utc).isoformat()
         run_summaries: list[BenchmarkRunSummary] = []
         for seed in resolved_seeds:
             seeded_spec = spec.model_copy(
@@ -320,7 +321,7 @@ class AgentExperimentService:
             "spec_file": str(spec_file),
             "seeds": resolved_seeds,
             "started_at": started_at,
-            "ended_at": datetime.now(UTC).isoformat(),
+            "ended_at": datetime.now(timezone.utc).isoformat(),
             "runs": [item.to_payload() for item in run_summaries],
             "aggregate": aggregate,
         }
@@ -339,7 +340,7 @@ class AgentExperimentService:
             if isinstance(best_value, str):
                 best_experiment_id = best_value
             score_value = overview.get("best_score")
-            if isinstance(score_value, int | float):
+            if isinstance(score_value, (int, float)):
                 best_score = float(score_value)
             completed_value = overview.get("completed_count")
             if isinstance(completed_value, int):
@@ -533,7 +534,7 @@ class AgentExperimentService:
             record = record.model_copy(
                 update={
                     "status": AgentExperimentStatus.INTERRUPTED,
-                    "ended_at": datetime.now(UTC),
+                    "ended_at": datetime.now(timezone.utc),
                     "stop_reason": "user_interrupt",
                 }
             )
@@ -827,7 +828,7 @@ class AgentExperimentService:
             if len(seed_candidates) == 0:
                 raise ValueError("default initialization did not produce any seed candidates")
 
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
         seed_candidate_count = len(seed_candidates)
         record = AgentExperimentRecord(
             experiment_id=actual_id,
@@ -1128,7 +1129,7 @@ class AgentExperimentService:
 
         if action.action_type == ActionType.REQUEST_HUMAN_FEEDBACK:
             request_id = result.payload.get("request_id")
-            created_at = datetime.now(UTC).isoformat()
+            created_at = datetime.now(timezone.utc).isoformat()
             request_key = (
                 request_id
                 if isinstance(request_id, str) and request_id
@@ -1397,7 +1398,7 @@ class AgentExperimentService:
             namespace=_feedback_request_namespace(experiment_id),
             item_key=request_id,
             payload=payload,
-            updated_at=datetime.now(UTC).isoformat(),
+            updated_at=datetime.now(timezone.utc).isoformat(),
         )
 
     def _run_final_evaluation(
@@ -1742,7 +1743,7 @@ class AgentExperimentService:
         record: AgentExperimentRecord,
         run_cache: dict[str, ExperimentRun],
         execution_service: ExperimentExecutionService,
-        runner: GymnasiumExperimentRunner,
+        runner: ExperimentRunner,
         candidate: RewardCandidate,
         label: str,
         run_count: int,
@@ -1854,7 +1855,7 @@ class AgentExperimentService:
         completed = record.model_copy(
             update={
                 "status": AgentExperimentStatus.COMPLETED,
-                "ended_at": datetime.now(UTC),
+                "ended_at": datetime.now(timezone.utc),
                 "stop_reason": reason,
             }
         )
@@ -1873,7 +1874,7 @@ class AgentExperimentService:
             namespace=AGENT_EXPERIMENTS_NAMESPACE,
             item_key=record.experiment_id,
             payload=record.model_dump(mode="json"),
-            updated_at=datetime.now(UTC).isoformat(),
+            updated_at=datetime.now(timezone.utc).isoformat(),
         )
 
     def _get_record(self, experiment_id: str) -> AgentExperimentRecord | None:
@@ -1923,14 +1924,14 @@ def _feedback_request_namespace(experiment_id: str) -> str:
 def _default_experiment_id() -> str:
     """Return a timestamp-based experiment identifier."""
 
-    timestamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S-%f")
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f")
     return f"experiment-{timestamp}-{uuid4().hex[:8]}"
 
 
 def _default_benchmark_id() -> str:
     """Return a timestamp-based benchmark identifier."""
 
-    timestamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S-%f")
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f")
     return f"benchmark-{timestamp}-{uuid4().hex[:8]}"
 
 
@@ -2194,39 +2195,26 @@ def _build_runner_for_spec(
     spec: AgentExperimentSpec,
     total_timesteps_override: int | None,
     eval_runs_override: int | None,
-) -> GymnasiumExperimentRunner:
-    """Build a Gymnasium runner from spec execution settings plus optional overrides."""
+) -> ExperimentRunner:
+    """Build an execution runner from spec settings plus optional overrides."""
 
-    ppo = spec.execution.ppo
-    humanoid_ppo_config = (
-        HumanoidPpoEvaluationConfig(
-            total_timesteps=(
-                total_timesteps_override
-                if total_timesteps_override is not None
-                else ppo.total_timesteps
-            ),
-            checkpoint_count=ppo.checkpoint_count,
-            evaluation_run_count=(
-                eval_runs_override if eval_runs_override is not None else ppo.eval_runs
-            ),
-            evaluation_episodes_per_checkpoint=ppo.eval_episodes_per_checkpoint,
-            n_envs=ppo.n_envs,
-            device=ppo.device,
-        )
-        if ppo is not None
-        else None
+    return build_runner(
+        environment_backend=spec.environment.backend,
+        ppo_config=spec.execution.ppo,
+        isaac_config=spec.execution.isaac,
+        total_timesteps_override=total_timesteps_override,
+        eval_runs_override=eval_runs_override,
     )
-    return GymnasiumExperimentRunner(humanoid_ppo_config=humanoid_ppo_config)
 
 
 def _score_from_run_metrics(metrics: dict[str, object]) -> float | None:
     """Extract a comparable scalar score from run metrics when present."""
 
     episode_reward = metrics.get("episode_reward")
-    if isinstance(episode_reward, int | float):
+    if isinstance(episode_reward, (int, float)):
         return float(episode_reward)
     total_reward = metrics.get("total_reward")
-    if isinstance(total_reward, int | float):
+    if isinstance(total_reward, (int, float)):
         return float(total_reward)
     return None
 
@@ -2239,7 +2227,7 @@ def _score_list_from_block(block: dict[str, object]) -> list[float]:
         return []
     scores: list[float] = []
     for value in values:
-        if isinstance(value, int | float):
+        if isinstance(value, (int, float)):
             scores.append(float(value))
     return scores
 
@@ -2330,3 +2318,5 @@ def _coerce_reasoning_effort(value: str) -> Literal["minimal", "low", "medium", 
     if normalized in {"minimal", "low", "medium", "high"}:
         return cast(Literal["minimal", "low", "medium", "high"], normalized)
     return "medium"
+
+

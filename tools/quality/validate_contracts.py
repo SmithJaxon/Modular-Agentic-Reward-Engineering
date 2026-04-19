@@ -77,7 +77,7 @@ def validate_session_config_schema(document: Any) -> list[str]:
             errors.append(f"missing property definition for {key}")
 
     expected_enums = {
-        "environment_backend": ["gymnasium"],
+        "environment_backend": ["gymnasium", "isaacgym"],
         "feedback_gate": ["none", "one_required", "both_required"],
     }
     for key, expected in expected_enums.items():
@@ -147,7 +147,8 @@ def validate_session_report_schema(document: Any) -> list[str]:
 
     environment_backend = properties.get("environment_backend")
     if not isinstance(environment_backend, dict) or environment_backend.get("enum") != [
-        "gymnasium"
+        "gymnasium",
+        "isaacgym",
     ]:
         errors.append("environment_backend enum does not match expected values")
 
