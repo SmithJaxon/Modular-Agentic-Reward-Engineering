@@ -17,7 +17,8 @@ set -euo pipefail
 PROJECT_ROOT="${PROJECT_ROOT:-$SLURM_SUBMIT_DIR}"
 SPEC_FILE="tools/fixtures/experiments/agent_isaacgym_cartpole_human_baseline.yaml"
 
-module purge
+module --force purge
+module load chpc/1.0
 module load python/3.12.4
 
 cd "$PROJECT_ROOT"
