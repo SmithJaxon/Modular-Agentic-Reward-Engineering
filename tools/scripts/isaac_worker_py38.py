@@ -77,25 +77,15 @@ def _healthcheck_payload() -> Dict[str, Any]:
     }
     missing: List[str] = []
     try:
-        import torch
-
-        checks["torch_importable"] = True
-        checks["torch_version"] = getattr(torch, "__version__", None)
-        checks["cuda_available"] = bool(torch.cuda.is_available())
-        checks["cuda_device_count"] = int(torch.cuda.device_count())
-    except Exception as exc:  # pragma: no cover - defensive guard
-        checks["torch_importable"] = False
-        checks["torch_error"] = "%s: %s" % (type(exc).__name__, exc)
-        checks["cuda_available"] = False
-        checks["cuda_device_count"] = 0
-        missing.append("torch")
-
-    try:
-        _, _, cfg_dir, tasks = _load_isaac_runtime()
+        torch, _, cfg_dir, tasks = _load_isaac_runtime()
         checks["isaacgym_importable"] = True
         checks["isaacgymenvs_importable"] = True
         checks["config_dir"] = cfg_dir
         checks["available_tasks"] = tasks
+        checks["torch_importable"] = True
+        checks["torch_version"] = getattr(torch, "__version__", None)
+        checks["cuda_available"] = bool(torch.cuda.is_available())
+        checks["cuda_device_count"] = int(torch.cuda.device_count())
         task_status: Dict[str, Any] = {}
         for task_id in ("Cartpole", "Humanoid", "AllegroHand"):
             task_status[task_id] = _runtime_status(
@@ -109,9 +99,23 @@ def _healthcheck_payload() -> Dict[str, Any]:
             )
         checks["task_status"] = task_status
     except Exception as exc:
+        try:
+            import torch
+
+            checks["torch_importable"] = True
+            checks["torch_version"] = getattr(torch, "__version__", None)
+            checks["cuda_available"] = bool(torch.cuda.is_available())
+            checks["cuda_device_count"] = int(torch.cuda.device_count())
+        except Exception as torch_exc:
+            checks["torch_importable"] = False
+            checks["torch_error"] = "%s: %s" % (type(torch_exc).__name__, torch_exc)
+            checks["cuda_available"] = False
+            checks["cuda_device_count"] = 0
         checks["isaacgym_importable"] = False
         checks["isaacgymenvs_importable"] = False
         checks["isaac_runtime_error"] = "%s: %s" % (type(exc).__name__, exc)
+        if not checks.get("torch_importable") and "torch" not in missing:
+            missing.append("torch")
         if "isaacgym" not in missing:
             missing.append("isaacgym")
         if "isaacgymenvs" not in missing:
