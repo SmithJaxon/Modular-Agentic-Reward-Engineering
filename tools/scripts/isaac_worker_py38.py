@@ -60,8 +60,8 @@ def _resolve_cfg_dir(isaacgymenvs_module: Any, cfg_dir_override: Optional[str]) 
 
 
 def _load_isaac_runtime(cfg_dir_override: Optional[str] = None) -> Tuple[Any, Any, str, List[str]]:
-    import torch
     import isaacgym  # noqa: F401
+    import torch
     import isaacgymenvs
     from isaacgymenvs.tasks import isaacgym_task_map
 
