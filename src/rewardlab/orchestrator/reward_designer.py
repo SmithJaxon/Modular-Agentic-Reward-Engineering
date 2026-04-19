@@ -333,6 +333,9 @@ def _build_design_prompt(
         else "none"
     )
     backend_constraints = _backend_specific_prompt_constraints(request.environment_backend)
+    eureka_constraints = _eureka_hyperparameter_prompt_constraints(
+        request.environment_backend
+    )
     return (
         f"Session: {request.session_id}\n"
         f"Iteration to produce: {request.next_iteration_index}\n"
@@ -363,6 +366,7 @@ def _build_design_prompt(
         f"- Disallowed historical reward signatures: {signature_line}.\n"
         "- Keep the reward concise, executable, and directly aligned with the objective.\n"
         f"{backend_constraints}"
+        f"{eureka_constraints}"
     )
 
 
@@ -524,6 +528,7 @@ def _build_retry_instruction(
         f"{disallowed}.\n"
         "- Keep the reward executable Python source without Markdown fences.\n"
         f"{_backend_specific_prompt_constraints(environment_backend)}"
+        f"{_eureka_hyperparameter_prompt_constraints(environment_backend)}"
     )
 
 
@@ -539,6 +544,23 @@ def _backend_specific_prompt_constraints(environment_backend: EnvironmentBackend
         "- Avoid tensor reshape/view/permute assumptions on observations/actions.\n"
         "- Prefer scalar-safe signals (env_reward and numeric info fields) over direct tensor math.\n"
         "- Keep imports minimal and robust for Isaac Gym Preview 4.\n"
+    )
+
+
+def _eureka_hyperparameter_prompt_constraints(
+    environment_backend: EnvironmentBackend,
+) -> str:
+    """Return fixed Eureka-comparable hyperparameter guidance for reward generation."""
+
+    if environment_backend != EnvironmentBackend.ISAAC_GYM:
+        return ""
+    return (
+        "- Hyperparameters are fixed to Eureka-comparable settings and must be treated as "
+        "external constants.\n"
+        "- Do not propose or imply optimizer/training schedule changes in reward code/comments.\n"
+        "- Assume this fixed schedule: 5 iterations, 16 samples per iteration, intermediate "
+        "evaluation uses 1 PPO run, final evaluation uses 5 PPO runs, and 10 checkpoints.\n"
+        "- Focus only on improving reward logic under these fixed settings.\n"
     )
 
 
