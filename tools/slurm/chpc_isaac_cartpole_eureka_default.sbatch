@@ -14,13 +14,23 @@
 
 set -euo pipefail
 
-PROJECT_ROOT="${PROJECT_ROOT:-$PWD}"
+PROJECT_ROOT="${PROJECT_ROOT:-$SLURM_SUBMIT_DIR}"
 SPEC_FILE="tools/fixtures/experiments/agent_isaacgym_cartpole_eureka_default.yaml"
 
 module purge
 module load python/3.12.4
 
 cd "$PROJECT_ROOT"
+
+if [ ! -d "$PROJECT_ROOT/.venv-controller" ]; then
+  echo "ERROR: controller venv not found at $PROJECT_ROOT/.venv-controller" >&2
+  echo "Hint: submit with --export=ALL,PROJECT_ROOT=/absolute/repo/path" >&2
+  exit 1
+fi
+if [ ! -f "$PROJECT_ROOT/$SPEC_FILE" ]; then
+  echo "ERROR: spec file not found: $PROJECT_ROOT/$SPEC_FILE" >&2
+  exit 1
+fi
 source .venv-controller/bin/activate
 
 export REWARDLAB_ISAAC_RUN_TIMEOUT_SECONDS="${REWARDLAB_ISAAC_RUN_TIMEOUT_SECONDS:-900}"
