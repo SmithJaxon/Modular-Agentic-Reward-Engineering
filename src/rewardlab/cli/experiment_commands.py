@@ -7,6 +7,7 @@ Last Updated: 2026-04-10
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -375,8 +376,13 @@ def _isaac_runtime_check_payload(
         "Humanoid",
         "AllegroHand",
     ]
+    worker_command_override = (
+        isaac_config.worker_command
+        if isaac_config.worker_command is not None and isaac_config.worker_command.strip()
+        else (os.getenv("REWARDLAB_ISAAC_WORKER_COMMAND", "").strip() or None)
+    )
     worker_command = resolve_worker_command(
-        IsaacGymSubprocessConfig(worker_command=isaac_config.worker_command)
+        IsaacGymSubprocessConfig(worker_command=worker_command_override)
     )
     worker_probe = _probe_isaac_worker_health(worker_command, task_ids=task_ids)
 
