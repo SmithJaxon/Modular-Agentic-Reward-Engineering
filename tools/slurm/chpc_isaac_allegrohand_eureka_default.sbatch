@@ -1,4 +1,4 @@
-﻿#!/bin/bash
+#!/bin/bash
 #SBATCH --job-name=rl-allegro-def
 #SBATCH --partition=notchpeak-gpu
 #SBATCH --gres=gpu:1
