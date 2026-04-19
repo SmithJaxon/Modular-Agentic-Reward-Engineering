@@ -99,7 +99,7 @@ execution:
     total_timesteps_override: 2000
     eval_runs_override: 1
   isaac:
-    worker_command: python3.8 -m rewardlab.experiments.isaacgym_worker
+    worker_command: python3.8 tools/scripts/isaac_worker_py38.py
     cfg_dir: null
 
 outputs:

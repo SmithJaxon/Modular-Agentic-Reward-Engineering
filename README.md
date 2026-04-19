@@ -67,6 +67,9 @@ python -m pip install --no-deps git+https://github.com/NVIDIA-Omniverse/IsaacGym
 Note:
 
 - NVIDIA `isaacgym` Python bindings may still need to be installed manually in the same `.venv`.
+- For CHPC split-runtime (controller py3.12 + worker py3.8), install Isaac dependencies in
+  the py3.8 worker env and use `python3.8 tools/scripts/isaac_worker_py38.py` as
+  `execution.isaac.worker_command`.
 
 ### Isolated Isaac Gym Runtime (WSL + Docker)
 
@@ -247,6 +250,7 @@ Comparison metrics in final reports:
 Isaac split-runtime controls:
 
 - `execution.isaac.worker_command`: explicit command used to launch isolated Isaac worker.
+  - For CHPC split-runtime, prefer `python3.8 tools/scripts/isaac_worker_py38.py`.
 - `execution.isaac.cfg_dir`: optional override for IsaacGymEnvs Hydra cfg directory.
 - `REWARDLAB_ISAAC_WORKER_COMMAND`: env fallback when spec does not set `worker_command`.
 - `REWARDLAB_ISAAC_WORKER_PYTHON`: fallback python executable when no worker command is set.

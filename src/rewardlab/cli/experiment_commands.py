@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import subprocess
 import sys
 from typing import Any, List, Optional
 
@@ -374,18 +375,43 @@ def _isaac_runtime_check_payload(
         "Humanoid",
         "AllegroHand",
     ]
-    backend = IsaacGymBackend(cfg_dir_override=isaac_config.cfg_dir)
-    statuses = {
-        task_id: backend.get_runtime_status(task_id).model_dump(mode="json")
-        for task_id in task_ids
-    }
-    available_tasks = sorted(backend.list_available_tasks())
-    config_dir = backend.resolve_config_dir()
-    import_status = _collect_isaac_import_status()
     worker_command = resolve_worker_command(
         IsaacGymSubprocessConfig(worker_command=isaac_config.worker_command)
     )
-    all_ready = all(bool(status.get("ready")) for status in statuses.values())
+    worker_probe = _probe_isaac_worker_health(worker_command, task_ids=task_ids)
+
+    backend = IsaacGymBackend(cfg_dir_override=isaac_config.cfg_dir)
+    controller_statuses = {
+        task_id: backend.get_runtime_status(task_id).model_dump(mode="json")
+        for task_id in task_ids
+    }
+    controller_available_tasks = sorted(backend.list_available_tasks())
+    controller_config_dir = backend.resolve_config_dir()
+    controller_import_status = _collect_isaac_import_status()
+
+    use_worker_task_status = (
+        worker_probe.get("status") == "ok"
+        and isinstance(worker_probe.get("checks"), dict)
+        and isinstance(worker_probe["checks"].get("task_status"), dict)
+    )
+    if use_worker_task_status:
+        statuses = {
+            task_id: worker_probe["checks"]["task_status"].get(task_id)
+            for task_id in task_ids
+        }
+        available_tasks = worker_probe["checks"].get("available_tasks", [])
+        config_dir = worker_probe["checks"].get("config_dir")
+    else:
+        statuses = controller_statuses
+        available_tasks = controller_available_tasks
+        config_dir = controller_config_dir
+
+    task_status_ready = all(
+        isinstance(statuses.get(task_id), dict) and bool(statuses[task_id].get("ready"))
+        for task_id in task_ids
+    )
+    worker_probe_ready = worker_probe.get("status") == "ok"
+    all_ready = task_status_ready and worker_probe_ready
     return {
         "backend": EnvironmentBackend.ISAAC_GYM.value,
         "status": "ok" if all_ready else "error",
@@ -395,9 +421,93 @@ def _isaac_runtime_check_payload(
             "available_tasks": available_tasks,
             "config_dir": config_dir,
             "worker_command": worker_command,
-            "imports": import_status,
+            "worker_probe": worker_probe,
+            "task_status_ready": task_status_ready,
+            "worker_probe_ready": worker_probe_ready,
+            "controller_imports": controller_import_status,
+            "controller_task_status": controller_statuses,
+            "controller_available_tasks": controller_available_tasks,
+            "controller_config_dir": controller_config_dir,
         },
     }
+
+
+def _probe_isaac_worker_health(worker_command: list[str], *, task_ids: list[str]) -> dict[str, Any]:
+    """Run worker-side healthcheck to validate split-runtime readiness."""
+
+    try:
+        completed = subprocess.run(
+            worker_command + ["--healthcheck"],
+            capture_output=True,
+            text=True,
+            timeout=90,
+            check=False,
+        )
+    except Exception as exc:
+        return {
+            "status": "error",
+            "error": f"{type(exc).__name__}: {exc}",
+            "checks": {},
+        }
+
+    stdout_text = completed.stdout.strip()
+    stderr_text = completed.stderr.strip()
+    if completed.returncode != 0:
+        return {
+            "status": "error",
+            "error": (
+                "worker healthcheck command failed with "
+                f"exit={completed.returncode}"
+            ),
+            "stdout_tail": _tail_lines(stdout_text),
+            "stderr_tail": _tail_lines(stderr_text),
+            "checks": {},
+        }
+
+    if not stdout_text:
+        return {
+            "status": "error",
+            "error": "worker healthcheck returned empty stdout",
+            "checks": {},
+        }
+    try:
+        payload = json.loads(stdout_text)
+    except json.JSONDecodeError as exc:
+        return {
+            "status": "error",
+            "error": f"worker healthcheck did not emit valid JSON: {exc}",
+            "stdout_tail": _tail_lines(stdout_text),
+            "stderr_tail": _tail_lines(stderr_text),
+            "checks": {},
+        }
+
+    checks = payload.get("checks")
+    if not isinstance(checks, dict):
+        checks = {}
+    raw_task_status = checks.get("task_status")
+    if not isinstance(raw_task_status, dict):
+        raw_task_status = {}
+    normalized_task_status = {
+        task_id: raw_task_status.get(task_id)
+        for task_id in task_ids
+    }
+    checks["task_status"] = normalized_task_status
+    return {
+        "status": str(payload.get("status", "error")),
+        "runtime_status": payload.get("runtime_status"),
+        "checks": checks,
+    }
+
+
+def _tail_lines(text: str, count: int = 20) -> str:
+    """Return compact trailing log lines from subprocess output."""
+
+    if not text:
+        return ""
+    lines = text.splitlines()
+    if len(lines) <= count:
+        return "\n".join(lines)
+    return "\n".join(lines[-count:])
 
 
 def _collect_isaac_import_status() -> dict[str, Any]:

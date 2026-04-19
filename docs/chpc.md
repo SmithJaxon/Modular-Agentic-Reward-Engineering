@@ -24,6 +24,25 @@ rewardlab experiment runtime-check --backend isaacgym --json
 rewardlab experiment runtime-check --backend isaacgym --file tools/fixtures/experiments/agent_isaacgym_chpc_profile.yaml --json
 ```
 
+## 1b. Isaac worker environment (Python 3.8)
+
+```bash
+module purge
+module load python/3.8
+python -m venv .venv-isaac
+source .venv-isaac/bin/activate
+python -m pip install -U pip
+python -m pip install -r requirements-runtime-isaacgym.txt
+python -m pip install --no-deps git+https://github.com/NVIDIA-Omniverse/IsaacGymEnvs.git
+python -m pip install -e /path/to/IsaacGym_Preview_4_Package/isaacgym/python
+```
+
+Important:
+
+- Do not run `python -m pip install -e .` inside `.venv-isaac`; the main package requires Python 3.12+.
+- The worker runtime uses `tools/scripts/isaac_worker_py38.py`, which does not import the
+  `rewardlab` package.
+
 ## 2. Configure split runtime
 
 Use one of:
@@ -35,8 +54,12 @@ Use one of:
 Example worker command:
 
 ```bash
-python3.8 -m rewardlab.experiments.isaacgym_worker
+python3.8 tools/scripts/isaac_worker_py38.py
 ```
+
+Note: this standalone worker script is intentionally separate from the `rewardlab`
+package so Isaac jobs can run in a Python 3.8 runtime even when controller code
+stays on Python 3.12.
 
 For non-standard IsaacGymEnvs locations, set either:
 
@@ -77,5 +100,5 @@ If CHPC policy supports Apptainer/Singularity, keep Isaac stack isolated:
 Example command shape:
 
 ```bash
-apptainer exec --nv /path/to/isaac.sif python3.8 -m rewardlab.experiments.isaacgym_worker
+apptainer exec --nv /path/to/isaac.sif python3.8 /workspace/tools/scripts/isaac_worker_py38.py
 ```

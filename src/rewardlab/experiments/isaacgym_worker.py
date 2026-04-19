@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 import traceback
 from pathlib import Path
 from typing import Any
@@ -27,9 +28,26 @@ def main() -> int:
     """Run one isolated Isaac execution and write structured JSON response."""
 
     parser = argparse.ArgumentParser(description="Isolated Isaac Gym run worker")
-    parser.add_argument("--request", required=True, help="Path to JSON request payload")
-    parser.add_argument("--response", required=True, help="Path to JSON response payload")
+    parser.add_argument("--request", help="Path to JSON request payload")
+    parser.add_argument("--response", help="Path to JSON response payload")
+    parser.add_argument(
+        "--healthcheck",
+        action="store_true",
+        help="Run runtime checks only and emit structured JSON.",
+    )
     args = parser.parse_args()
+
+    if args.healthcheck:
+        payload = _healthcheck_payload()
+        serialized = json.dumps(payload)
+        if args.response:
+            Path(args.response).write_text(serialized, encoding="utf-8")
+        else:
+            print(serialized)
+        return 0 if payload.get("status") == "ok" else 1
+
+    if not args.request or not args.response:
+        parser.error("--request and --response are required unless --healthcheck is used")
 
     request_path = Path(args.request)
     response_path = Path(args.response)
@@ -112,6 +130,43 @@ def _request_from_payload(payload: dict[str, Any]) -> ExecutionRequest:
         render_mode=payload.get("render_mode"),
         max_episode_steps=payload.get("max_episode_steps"),
     )
+
+
+def _healthcheck_payload() -> dict[str, Any]:
+    """Return worker-runtime readiness payload for split-runtime probing."""
+
+    backend = IsaacGymBackend()
+    task_ids = ("Cartpole", "Humanoid", "AllegroHand")
+    task_status = {
+        task_id: backend.get_runtime_status(task_id).model_dump(mode="json")
+        for task_id in task_ids
+    }
+    all_ready = all(bool(status.get("ready")) for status in task_status.values())
+    checks = {
+        "python_executable": sys.executable,
+        "task_status": task_status,
+        "available_tasks": sorted(backend.list_available_tasks()),
+        "config_dir": backend.resolve_config_dir(),
+    }
+    return {
+        "status": "ok" if all_ready else "error",
+        "runtime_status": {
+            "backend": EnvironmentBackend.ISAAC_GYM.value,
+            "ready": all_ready,
+            "status_reason": (
+                "Isaac worker healthcheck passed"
+                if all_ready
+                else "Isaac worker healthcheck failed for one or more task targets"
+            ),
+            "missing_prerequisites": (
+                []
+                if all_ready
+                else ["isaacgym worker runtime prerequisites"]
+            ),
+            "detected_version": None,
+        },
+        "checks": checks,
+    }
 
 
 if __name__ == "__main__":
