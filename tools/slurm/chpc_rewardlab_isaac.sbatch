@@ -35,6 +35,13 @@ export OPENBLAS_NUM_THREADS=1
 export NUMEXPR_NUM_THREADS=1
 export VECLIB_MAXIMUM_THREADS=1
 export BLIS_NUM_THREADS=1
+
+if [ ! -f "$PROJECT_ROOT/tools/slurm/chpc_isaac_env.sh" ]; then
+  echo "ERROR: Isaac env helper not found at $PROJECT_ROOT/tools/slurm/chpc_isaac_env.sh" >&2
+  exit 1
+fi
+source "$PROJECT_ROOT/tools/slurm/chpc_isaac_env.sh"
+
 # Optionally point at a dedicated Isaac worker runtime.
 # export REWARDLAB_ISAAC_WORKER_COMMAND="python3.8 tools/scripts/isaac_worker_py38.py"
 # export REWARDLAB_ISAAC_CFG_DIR="/path/to/IsaacGymEnvs/isaacgymenvs/cfg"
@@ -44,3 +51,5 @@ rewardlab experiment runtime-check --backend isaacgym --json
 
 echo "[run] ${SPEC_FILE}"
 rewardlab experiment run --file "$SPEC_FILE" --json
+
+

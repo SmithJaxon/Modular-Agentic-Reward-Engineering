@@ -43,13 +43,18 @@ export NUMEXPR_NUM_THREADS=1
 export VECLIB_MAXIMUM_THREADS=1
 export BLIS_NUM_THREADS=1
 
-if [ -z "${REWARDLAB_ISAAC_WORKER_COMMAND:-}" ]; then
-  export REWARDLAB_ISAAC_WORKER_COMMAND="$PROJECT_ROOT/.venv-isaac/bin/python $PROJECT_ROOT/tools/scripts/isaac_worker_py38.py"
+
+if [ ! -f "$PROJECT_ROOT/tools/slurm/chpc_isaac_env.sh" ]; then
+  echo "ERROR: Isaac env helper not found at $PROJECT_ROOT/tools/slurm/chpc_isaac_env.sh" >&2
+  exit 1
 fi
+source "$PROJECT_ROOT/tools/slurm/chpc_isaac_env.sh"
 
 echo "[preflight] runtime-check"
 rewardlab experiment runtime-check --backend isaacgym --file "$SPEC_FILE" --json
 
 echo "[run] ${SPEC_FILE}"
 rewardlab experiment run --file "$SPEC_FILE" --json
+
+
 
