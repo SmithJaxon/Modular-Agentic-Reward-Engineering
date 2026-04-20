@@ -34,6 +34,13 @@ if [ ! -f "$PROJECT_ROOT/$SPEC_FILE" ]; then
 fi
 source .venv-controller/bin/activate
 
+if [ ! -f "$PROJECT_ROOT/tools/slurm/chpc_rewardlab_job_runtime.sh" ]; then
+  echo "ERROR: runtime isolation helper not found at $PROJECT_ROOT/tools/slurm/chpc_rewardlab_job_runtime.sh" >&2
+  exit 1
+fi
+source "$PROJECT_ROOT/tools/slurm/chpc_rewardlab_job_runtime.sh"
+setup_rewardlab_job_runtime
+
 export REWARDLAB_ISAAC_RUN_TIMEOUT_SECONDS="${REWARDLAB_ISAAC_RUN_TIMEOUT_SECONDS:-600}"
 
 export OMP_NUM_THREADS=1
@@ -50,7 +57,11 @@ fi
 source "$PROJECT_ROOT/tools/slurm/chpc_isaac_env.sh"
 
 echo "[preflight] runtime-check"
-rewardlab experiment runtime-check --backend isaacgym --file "$SPEC_FILE" --json
+echo "[diag] source_spec_file=$SPEC_FILE"
+echo "[diag] effective_spec_file=$REWARDLAB_JOB_SPEC_FILE_REL"
+echo "[diag] job_runtime_root=$REWARDLAB_JOB_RUNTIME_ROOT"
+echo "[diag] rewardlab_db_path=$REWARDLAB_DB_PATH"
+rewardlab experiment runtime-check --backend isaacgym --file "$REWARDLAB_JOB_SPEC_FILE" --json
 
-echo "[run] ${SPEC_FILE}"
-rewardlab experiment run --file "$SPEC_FILE" --json
+echo "[run] ${REWARDLAB_JOB_SPEC_FILE_REL}"
+rewardlab experiment run --file "$REWARDLAB_JOB_SPEC_FILE" --json

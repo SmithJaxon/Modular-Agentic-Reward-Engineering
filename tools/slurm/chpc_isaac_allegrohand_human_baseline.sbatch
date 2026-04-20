@@ -57,6 +57,13 @@ if [ ! -f "$PROJECT_ROOT/$SPEC_FILE" ]; then
 fi
 source .venv-controller/bin/activate
 
+if [ ! -f "$PROJECT_ROOT/tools/slurm/chpc_rewardlab_job_runtime.sh" ]; then
+  echo "ERROR: runtime isolation helper not found at $PROJECT_ROOT/tools/slurm/chpc_rewardlab_job_runtime.sh" >&2
+  exit 1
+fi
+source "$PROJECT_ROOT/tools/slurm/chpc_rewardlab_job_runtime.sh"
+setup_rewardlab_job_runtime
+
 export PYTHONUNBUFFERED=1
 export REWARDLAB_ISAAC_RUN_TIMEOUT_SECONDS="${REWARDLAB_ISAAC_RUN_TIMEOUT_SECONDS:-2400}"
 
@@ -75,10 +82,15 @@ source "$PROJECT_ROOT/tools/slurm/chpc_isaac_env.sh"
 
 echo "[diag] wrapper_start_utc=$(utc_now)"
 echo "[diag] project_root=$PROJECT_ROOT"
-echo "[diag] spec_file=$SPEC_FILE"
+echo "[diag] source_spec_file=$SPEC_FILE"
+echo "[diag] effective_spec_file=$REWARDLAB_JOB_SPEC_FILE_REL"
 echo "[diag] slurm_job_id=${SLURM_JOB_ID:-unknown}"
 echo "[diag] hostname=$(hostname)"
 echo "[diag] pwd=$(pwd)"
+echo "[diag] job_runtime_root=$REWARDLAB_JOB_RUNTIME_ROOT"
+echo "[diag] rewardlab_data_dir=$REWARDLAB_DATA_DIR"
+echo "[diag] rewardlab_db_path=$REWARDLAB_DB_PATH"
+echo "[diag] rewardlab_event_log_dir=$REWARDLAB_EVENT_LOG_DIR"
 echo "[diag] cuda_visible_devices=${CUDA_VISIBLE_DEVICES:-<unset>}"
 echo "[diag] isaac_run_timeout_seconds=$REWARDLAB_ISAAC_RUN_TIMEOUT_SECONDS"
 echo "[diag] controller_python=$(command -v python)"
@@ -128,14 +140,14 @@ except Exception as exc:
 print(json.dumps(payload, sort_keys=True))
 PY
 
-RUN_JSON="$PROJECT_ROOT/.rewardlab/chpc_full_diag_${SLURM_JOB_ID:-manual}.run.json"
+RUN_JSON="$REWARDLAB_JOB_RUNTIME_ROOT/chpc_full_diag_${SLURM_JOB_ID:-manual}.run.json"
 rm -f "$RUN_JSON"
 
-run_and_time preflight rewardlab experiment runtime-check --backend isaacgym --file "$SPEC_FILE" --json
+run_and_time preflight rewardlab experiment runtime-check --backend isaacgym --file "$REWARDLAB_JOB_SPEC_FILE" --json
 
 run_start_epoch="$(date +%s)"
-echo "[run] start_utc=$(utc_now) spec=$SPEC_FILE"
-rewardlab experiment run --file "$SPEC_FILE" --json | tee "$RUN_JSON"
+echo "[run] start_utc=$(utc_now) spec=$REWARDLAB_JOB_SPEC_FILE_REL"
+rewardlab experiment run --file "$REWARDLAB_JOB_SPEC_FILE" --json | tee "$RUN_JSON"
 run_status=${PIPESTATUS[0]}
 echo "[run] end_utc=$(utc_now) elapsed_s=$(elapsed_seconds "$run_start_epoch") status=$run_status"
 if [ "$run_status" -ne 0 ]; then
@@ -167,9 +179,9 @@ PY
   experiment_id="${run_meta[0]:-}"
   report_path="${run_meta[1]:-}"
 
-  if [ -n "$experiment_id" ] && [ -f "$PROJECT_ROOT/.rewardlab/events/events.jsonl" ]; then
+  if [ -n "$experiment_id" ] && [ -f "$REWARDLAB_JOB_EVENTS_JSON" ]; then
     echo "[diag] filtered_events session_id=$experiment_id"
-    python - "$PROJECT_ROOT/.rewardlab/events/events.jsonl" "$experiment_id" <<'PY'
+    python - "$REWARDLAB_JOB_EVENTS_JSON" "$experiment_id" <<'PY'
 import json
 import pathlib
 import sys
@@ -191,9 +203,13 @@ for record in matches[-40:]:
 PY
   fi
 
-  if [ -n "$report_path" ] && [ -f "$PROJECT_ROOT/$report_path" ]; then
+  resolved_report_path="$report_path"
+  if [ -n "$resolved_report_path" ] && [[ "$resolved_report_path" != /* ]]; then
+    resolved_report_path="$PROJECT_ROOT/$resolved_report_path"
+  fi
+  if [ -n "$report_path" ] && [ -f "$resolved_report_path" ]; then
     echo "[diag] report_summary path=$report_path"
-    python - "$PROJECT_ROOT/$report_path" <<'PY'
+    python - "$resolved_report_path" <<'PY'
 import json
 import pathlib
 import sys
