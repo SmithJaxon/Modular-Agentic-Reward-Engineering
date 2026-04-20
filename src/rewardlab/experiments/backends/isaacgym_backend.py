@@ -6,8 +6,8 @@ Last Updated: 2026-04-17
 
 from __future__ import annotations
 
-from collections.abc import Callable
 import os
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, cast
 
@@ -149,7 +149,11 @@ class IsaacGymBackend(BackendAdapter):
         isaacgymenvs = self._require_isaacgymenvs_module()
         _ensure_torch_compile_compat_for_isaac()
         resolved_seed = seed if seed is not None else 0
-        task_runtime = _resolve_task_runtime_profile(environment_id)
+        task_runtime = _resolve_task_runtime_profile(
+            environment_id,
+            sim_device=sim_device,
+            rl_device=rl_device,
+        )
         cfg = _compose_task_cfg(
             isaacgymenvs_module=isaacgymenvs,
             task=environment_id,
@@ -263,12 +267,27 @@ class _IsaacTaskRuntimeProfile:
         self.pipeline = pipeline
 
 
-def _resolve_task_runtime_profile(environment_id: str) -> _IsaacTaskRuntimeProfile:
+def _uses_cuda_device(device: str) -> bool:
+    """Return whether the Isaac device string targets CUDA execution."""
+
+    return device.strip().lower().startswith("cuda")
+
+
+def _resolve_task_runtime_profile(
+    environment_id: str,
+    *,
+    sim_device: str,
+    rl_device: str,
+) -> _IsaacTaskRuntimeProfile:
     """Return stable runtime settings for task families."""
 
     del environment_id
-    # Force CPU pipeline for stability across task switches in Isaac Gym Preview 4.
-    return _IsaacTaskRuntimeProfile(pipeline="cpu")
+    pipeline = (
+        "gpu"
+        if _uses_cuda_device(sim_device) or _uses_cuda_device(rl_device)
+        else "cpu"
+    )
+    return _IsaacTaskRuntimeProfile(pipeline=pipeline)
 
 
 def _compose_task_cfg(

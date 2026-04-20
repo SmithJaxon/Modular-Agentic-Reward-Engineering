@@ -7,6 +7,7 @@ import argparse
 import inspect
 import json
 import os
+import time
 import traceback
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
@@ -94,6 +95,7 @@ def _compose_task_cfg(
     num_envs: int,
     sim_device: str,
     rl_device: str,
+    pipeline: str,
     headless: bool,
     force_render: bool,
     cfg_dir: str,
@@ -113,7 +115,7 @@ def _compose_task_cfg(
         "num_envs=%s" % num_envs,
         "sim_device=%s" % sim_device,
         "rl_device=%s" % rl_device,
-        "pipeline=cpu",
+        "pipeline=%s" % pipeline,
         "headless=%s" % ("true" if headless else "false"),
         "force_render=%s" % ("true" if force_render else "false"),
     ]
@@ -168,6 +170,7 @@ def _make_environment(
         num_envs=max(num_envs, 1),
         sim_device=sim_device,
         rl_device=rl_device,
+        pipeline=_resolve_pipeline(sim_device, rl_device),
         headless=headless,
         force_render=force_render,
         cfg_dir=cfg_dir,
@@ -277,10 +280,33 @@ def _healthcheck_payload() -> Dict[str, Any]:
 def _resolve_device(configured: str, torch: Any) -> str:
     normalized = (configured or "auto").strip().lower()
     if normalized == "auto":
-        return "cpu"
-    if normalized.startswith("cuda") and not torch.cuda.is_available():
+        return "cuda:0" if _cuda_available(torch) else "cpu"
+    if normalized.startswith("cuda") and not _cuda_available(torch):
         raise RuntimeError("execution.ppo.device requests CUDA but CUDA is unavailable")
     return configured
+
+
+def _cuda_available(torch: Any) -> bool:
+    cuda_module = getattr(torch, "cuda", None)
+    is_available = getattr(cuda_module, "is_available", None)
+    if callable(is_available):
+        return bool(is_available())
+    return False
+
+
+def _cuda_device_count(torch: Any) -> int:
+    cuda_module = getattr(torch, "cuda", None)
+    device_count = getattr(cuda_module, "device_count", None)
+    if callable(device_count):
+        return int(device_count())
+    return 0
+
+
+def _resolve_pipeline(*devices: str) -> str:
+    for device in devices:
+        if device.strip().lower().startswith("cuda"):
+            return "gpu"
+    return "cpu"
 
 
 def _seed_for_index(base_seed: Optional[int], offset: int) -> Optional[int]:
@@ -709,6 +735,26 @@ def _execute(payload: Dict[str, Any]) -> Dict[str, Any]:
     n_envs = int(policy_config.get("n_envs", 8))
     configured_device = str(policy_config.get("device", "auto"))
     device = _resolve_device(configured_device, torch)
+    pipeline = _resolve_pipeline(device, device)
+    run_start = time.perf_counter()
+    cuda_available = _cuda_available(torch)
+    cuda_device_count = _cuda_device_count(torch)
+    print(
+        "[isaac-worker] run-start "
+        "task=%s seed=%s configured_device=%s resolved_device=%s pipeline=%s n_envs=%s "
+        "cuda_available=%s cuda_device_count=%s"
+        % (
+            environment_id,
+            seed,
+            configured_device,
+            device,
+            pipeline,
+            n_envs,
+            cuda_available,
+            cuda_device_count,
+        ),
+        flush=True,
+    )
     environment = _make_environment(
         isaacgymenvs,
         seed=seed,
@@ -720,6 +766,11 @@ def _execute(payload: Dict[str, Any]) -> Dict[str, Any]:
         force_render=False,
         virtual_screen_capture=False,
         cfg_dir=cfg_dir,
+    )
+    print(
+        "[isaac-worker] environment-ready task=%s elapsed_s=%.3f"
+        % (environment_id, time.perf_counter() - run_start),
+        flush=True,
     )
 
     try:
@@ -738,8 +789,29 @@ def _execute(payload: Dict[str, Any]) -> Dict[str, Any]:
         learning_rate = float(policy_config.get("learning_rate", 3e-4))
         eval_steps_floor = max(int(policy_config.get("evaluation_max_steps_floor", 32)), 1)
         checkpoint_timesteps = max(total_timesteps // checkpoint_count, 1)
+        print(
+            "[isaac-worker] train-config total_timesteps=%s checkpoint_count=%s "
+            "checkpoint_timesteps=%s eval_runs=%s eval_episodes_per_checkpoint=%s gamma=%s "
+            "learning_rate=%s"
+            % (
+                total_timesteps,
+                checkpoint_count,
+                checkpoint_timesteps,
+                eval_runs,
+                eval_episodes_per_checkpoint,
+                gamma,
+                learning_rate,
+            ),
+            flush=True,
+        )
 
+        reset_start = time.perf_counter()
         initial_obs = _extract_observation(environment.reset(), torch, device)
+        print(
+            "[isaac-worker] reset-complete obs_shape=%s elapsed_s=%.3f"
+            % (list(initial_obs.shape), time.perf_counter() - reset_start),
+            flush=True,
+        )
         obs_dim = int(initial_obs.shape[-1])
         action_spec = _resolve_action_spec(environment, torch, device)
         policy = _PolicyNetwork(torch=torch, obs_dim=obs_dim, action_spec=action_spec, device=device)
@@ -752,6 +824,17 @@ def _execute(payload: Dict[str, Any]) -> Dict[str, Any]:
         previous_observation = initial_obs
 
         for checkpoint_index in range(checkpoint_count):
+            checkpoint_start = time.perf_counter()
+            print(
+                "[isaac-worker] checkpoint-start index=%s/%s global_step=%s target_timesteps=%s"
+                % (
+                    checkpoint_index + 1,
+                    checkpoint_count,
+                    global_step,
+                    checkpoint_timesteps,
+                ),
+                flush=True,
+            )
             log_probs: List[Any] = []
             rewards: List[Any] = []
             dones: List[Any] = []
@@ -807,8 +890,26 @@ def _execute(payload: Dict[str, Any]) -> Dict[str, Any]:
                     "fitness_score": round(float(checkpoint_score), 6),
                 }
             )
+            print(
+                "[isaac-worker] checkpoint-complete index=%s/%s global_step=%s score=%.6f "
+                "checkpoint_elapsed_s=%.3f total_elapsed_s=%.3f"
+                % (
+                    checkpoint_index + 1,
+                    checkpoint_count,
+                    global_step,
+                    float(checkpoint_score),
+                    time.perf_counter() - checkpoint_start,
+                    time.perf_counter() - run_start,
+                ),
+                flush=True,
+            )
 
         aggregate_score = max(checkpoint_scores) if checkpoint_scores else 0.0
+        print(
+            "[isaac-worker] run-complete aggregate_score=%.6f total_elapsed_s=%.3f"
+            % (float(aggregate_score), time.perf_counter() - run_start),
+            flush=True,
+        )
         metrics = {
             "episode_reward": round(float(aggregate_score), 6),
             "fitness_metric_name": _fitness_metric_name(environment_id),
@@ -820,6 +921,7 @@ def _execute(payload: Dict[str, Any]) -> Dict[str, Any]:
             "evaluation_episodes_per_checkpoint": eval_episodes_per_checkpoint,
             "n_envs": n_envs,
             "device": device,
+            "pipeline": pipeline,
             "evaluation_protocol": "isaacgym_policy_gradient_max_checkpoint_fitness",
         }
         return {
@@ -837,6 +939,7 @@ def _execute(payload: Dict[str, Any]) -> Dict[str, Any]:
                     "reward_parameters": [],
                     "evaluation_protocol": "isaacgym_policy_gradient_max_checkpoint_fitness",
                     "checkpoint_count": checkpoint_count,
+                    "pipeline": pipeline,
                 },
             },
         }

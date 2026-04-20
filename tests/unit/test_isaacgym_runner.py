@@ -109,3 +109,31 @@ def test_run_isolated_subprocess_surfaces_timeout_bytes(
     message = str(exc_info.value)
     assert "still running" in message
     assert "warn two" in message
+
+
+def test_resolve_device_prefers_cuda_when_auto_and_cuda_available() -> None:
+    """Auto device selection should prefer CUDA when torch reports it available."""
+
+    class _CudaAvailable:
+        @staticmethod
+        def is_available() -> bool:
+            return True
+
+    class _Torch:
+        cuda = _CudaAvailable()
+
+    assert runner._resolve_device("auto", _Torch()) == "cuda:0"
+
+
+def test_resolve_device_falls_back_to_cpu_when_auto_and_cuda_unavailable() -> None:
+    """Auto device selection should fall back to CPU when CUDA is not available."""
+
+    class _CudaUnavailable:
+        @staticmethod
+        def is_available() -> bool:
+            return False
+
+    class _Torch:
+        cuda = _CudaUnavailable()
+
+    assert runner._resolve_device("auto", _Torch()) == "cpu"

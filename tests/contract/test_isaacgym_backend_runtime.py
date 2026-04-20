@@ -8,7 +8,10 @@ from __future__ import annotations
 
 import pytest
 
-from rewardlab.experiments.backends.isaacgym_backend import IsaacGymBackend
+from rewardlab.experiments.backends.isaacgym_backend import (
+    IsaacGymBackend,
+    _resolve_task_runtime_profile,
+)
 
 
 class FakeIsaacGymEnvsModule:
@@ -56,3 +59,10 @@ def test_isaacgym_backend_create_environment_raises_when_runtime_not_ready() -> 
     with pytest.raises(RuntimeError, match="isaacgymenvs"):
         backend.create_environment("Humanoid")
 
+
+def test_isaacgym_runtime_profile_uses_gpu_pipeline_for_cuda_devices() -> None:
+    """GPU-targeted Isaac devices should switch the Hydra pipeline to GPU."""
+
+    profile = _resolve_task_runtime_profile("Cartpole", sim_device="cuda:0", rl_device="cuda:0")
+
+    assert profile.pipeline == "gpu"

@@ -884,11 +884,20 @@ def _resolve_device(configured: str, torch: Any) -> str:
 
     normalized = configured.strip().lower()
     if normalized == "auto":
-        # Prefer CPU for Isaac Gym Preview 4 stability across repeated task execution.
-        return "cpu"
-    if normalized.startswith("cuda") and not torch.cuda.is_available():
+        return "cuda:0" if _cuda_available(torch) else "cpu"
+    if normalized.startswith("cuda") and not _cuda_available(torch):
         raise ExecutionError("execution.ppo.device requests CUDA but no CUDA runtime is available")
     return configured
+
+
+def _cuda_available(torch: Any) -> bool:
+    """Return whether the provided torch-like module exposes a CUDA runtime."""
+
+    cuda_module = getattr(torch, "cuda", None)
+    is_available = getattr(cuda_module, "is_available", None)
+    if callable(is_available):
+        return bool(is_available())
+    return False
 
 
 def _require_torch() -> Any:

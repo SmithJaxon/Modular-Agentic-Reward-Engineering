@@ -61,6 +61,28 @@ class _DummyEnv:
         self.closed = True
 
 
+class _TorchCudaAvailable:
+    """Minimal torch double reporting a CUDA-capable runtime."""
+
+    class _Cuda:
+        @staticmethod
+        def is_available() -> bool:
+            return True
+
+    cuda = _Cuda()
+
+
+class _TorchCudaUnavailable:
+    """Minimal torch double reporting no CUDA runtime."""
+
+    class _Cuda:
+        @staticmethod
+        def is_available() -> bool:
+            return False
+
+    cuda = _Cuda()
+
+
 def test_execute_uses_cfg_when_make_accepts_cfg(monkeypatch, worker_module) -> None:
     """The worker should pass composed Hydra cfg to runtimes that accept cfg."""
 
@@ -175,3 +197,16 @@ def test_execute_falls_back_to_cfg_dir_when_make_rejects_cfg(monkeypatch, worker
     assert len(calls) == 1
     assert calls[0]["cfg_dir"] == "C:/rewardlab/isaac-cfg"
     assert "cfg" not in calls[0]
+
+
+def test_resolve_device_prefers_cuda_when_auto_and_cuda_available(worker_module) -> None:
+    """Auto device selection should prefer CUDA when the worker runtime exposes it."""
+
+    assert worker_module._resolve_device("auto", _TorchCudaAvailable()) == "cuda:0"
+
+
+def test_resolve_pipeline_tracks_cuda_devices(worker_module) -> None:
+    """Pipeline selection should switch to GPU when either execution device targets CUDA."""
+
+    assert worker_module._resolve_pipeline("cuda:0", "cpu") == "gpu"
+    assert worker_module._resolve_pipeline("cpu", "cpu") == "cpu"
