@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import inspect
 from dataclasses import dataclass, field
-from enum import StrEnum
+from rewardlab.utils.compat import StrEnum
 from types import CodeType
 from typing import Any
 
@@ -65,6 +65,7 @@ def load_reward_program_from_candidate(
     candidate: RewardCandidate,
     *,
     entrypoint_name: str = DEFAULT_ENTRYPOINT_NAME,
+    runtime_compat_profile: str | None = None,
 ) -> RewardProgram:
     """Load a reward program from a stored reward candidate definition."""
 
@@ -72,6 +73,7 @@ def load_reward_program_from_candidate(
         candidate_id=candidate.candidate_id,
         source_text=candidate.reward_definition,
         entrypoint_name=entrypoint_name,
+        runtime_compat_profile=runtime_compat_profile,
     )
 
 
@@ -80,6 +82,7 @@ def load_reward_program(
     candidate_id: str,
     source_text: str,
     entrypoint_name: str = DEFAULT_ENTRYPOINT_NAME,
+    runtime_compat_profile: str | None = None,
 ) -> RewardProgram:
     """Compile candidate source and resolve a callable reward entrypoint."""
 
@@ -91,6 +94,10 @@ def load_reward_program(
             source_text,
             "reward source is blank",
         )
+    normalized_source = _apply_runtime_compat_rewrites(
+        normalized_source,
+        runtime_compat_profile=runtime_compat_profile,
+    )
 
     try:
         compiled = compile(
@@ -156,6 +163,36 @@ def _execute_compiled_program(candidate_id: str, compiled: CodeType) -> dict[str
     return namespace
 
 
+def _apply_runtime_compat_rewrites(
+    source_text: str,
+    *,
+    runtime_compat_profile: str | None,
+) -> str:
+    """Apply backend-specific source rewrites needed for runtime compatibility."""
+
+    if runtime_compat_profile != "isaacgym":
+        return source_text
+    return _rewrite_torch_compile_calls(source_text)
+
+
+def _rewrite_torch_compile_calls(source_text: str) -> str:
+    """Rewrite torch.compile usage to a runtime-safe helper for Torch 1.x."""
+
+    if "torch.compile(" not in source_text and "@torch.compile" not in source_text:
+        return source_text
+    shim = (
+        "def _rewardlab_torch_compile(fn, *args, **kwargs):\n"
+        "    try:\n"
+        "        compiler = torch.compile\n"
+        "    except Exception:\n"
+        "        return fn\n"
+        "    return compiler(fn, *args, **kwargs)\n\n"
+    )
+    rewritten = source_text.replace("torch.compile(", "_rewardlab_torch_compile(")
+    rewritten = rewritten.replace("@torch.compile", "@_rewardlab_torch_compile")
+    return shim + rewritten
+
+
 def _resolve_entrypoint_name(namespace: dict[str, Any], requested_name: str) -> str | None:
     """Resolve the requested or legacy entrypoint name from the executed namespace."""
 
@@ -189,3 +226,4 @@ def _invalid_program(
         validation_status=RewardProgramStatus.INVALID,
         validation_error=validation_error,
     )
+

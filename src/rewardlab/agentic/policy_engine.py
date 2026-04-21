@@ -7,7 +7,7 @@ Last Updated: 2026-04-10
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from rewardlab.schemas.agent_experiment import AgentExperimentRecord
 from rewardlab.schemas.reward_candidate import RewardCandidate
@@ -37,7 +37,7 @@ class PolicyEngine:
         spec = record.spec
         ledger = record.budget_ledger
         stopping = spec.governance.stopping
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
 
         if ledger.consumed_total_tokens >= spec.budgets.api.max_total_tokens:
             return PolicyDecision(True, "api_token_budget_exhausted")
@@ -115,3 +115,4 @@ def _relative_improvement(window: list[RewardCandidate]) -> float:
     best_score = max(candidate.aggregate_score or 0.0 for candidate in window)
     denominator = max(abs(first_score), 1e-6)
     return max(best_score - first_score, 0.0) / denominator
+

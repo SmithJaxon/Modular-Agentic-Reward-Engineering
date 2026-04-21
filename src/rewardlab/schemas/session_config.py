@@ -7,18 +7,20 @@ Last Updated: 2026-04-02
 from __future__ import annotations
 
 from datetime import datetime
-from enum import StrEnum
+from rewardlab.utils.compat import StrEnum
+from typing import Union
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-MetadataValue = str | int | float | bool
+MetadataValue = Union[str, int, float, bool]
 
 
 class EnvironmentBackend(StrEnum):
     """Supported environment backend values."""
 
     GYMNASIUM = "gymnasium"
+    ISAAC_GYM = "isaacgym"
 
 
 class FeedbackGate(StrEnum):
@@ -134,3 +136,4 @@ def session_record_from_mapping(data: dict[str, Any]) -> SessionRecord:
     """Validate and construct a session record from generic mapping data."""
 
     return SessionRecord.model_validate(data)
+

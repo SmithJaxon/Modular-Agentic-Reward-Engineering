@@ -6,7 +6,7 @@ Last Updated: 2026-04-02
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -27,7 +27,7 @@ class RewardCandidate(BaseModel):
     aggregate_score: float | None = None
     selected_final: bool = False
     minor_robustness_risk_accepted: bool = False
-    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     @field_validator("candidate_id", "session_id", "reward_definition", "change_summary")
     @classmethod
@@ -53,3 +53,4 @@ class RewardCandidate(BaseModel):
         """Keep aggregate scores as explicit numeric values when present."""
 
         return value
+

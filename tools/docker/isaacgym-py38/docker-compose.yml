@@ -1,0 +1,19 @@
+services:
+  isaacgym-py38:
+    build:
+      context: ../../..
+      dockerfile: tools/docker/isaacgym-py38/Dockerfile
+    image: rewardlab-isaacgym-py38:local
+    container_name: rewardlab-isaacgym-py38
+    working_dir: /workspace
+    volumes:
+      - ../../..:/workspace
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: all
+      PYTHONUNBUFFERED: "1"
+    gpus: all
+    shm_size: "8gb"
+    tty: true
+    stdin_open: true
+    command: ["/bin/bash", "-lc", "sleep infinity"]

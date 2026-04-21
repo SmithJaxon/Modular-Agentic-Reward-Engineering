@@ -27,7 +27,7 @@
     },
     "environment_backend": {
       "type": "string",
-      "enum": ["gymnasium"]
+      "enum": ["gymnasium", "isaacgym"]
     },
     "best_candidate": {
       "type": "object",

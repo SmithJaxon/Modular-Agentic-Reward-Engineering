@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -72,7 +72,7 @@ class RunArtifactWriter:
             "environment_id": environment_id,
             "execution_mode": execution_mode.value,
             "status": status.value,
-            "generated_at": datetime.now(UTC).isoformat(),
+            "generated_at": datetime.now(timezone.utc).isoformat(),
             "files": {
                 "metrics": metrics_path.name,
                 "event_trace": event_trace_path.name if event_trace_path is not None else None,
@@ -102,3 +102,4 @@ def select_primary_artifact_ref(artifact_refs: list[str]) -> str | None:
             if artifact_ref.endswith(suffix):
                 return artifact_ref
     return artifact_refs[0] if artifact_refs else None
+

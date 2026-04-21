@@ -59,7 +59,7 @@ def write_contract_files(contract_dir: Path) -> None:
                     "environment_id": {"type": "string", "minLength": 1},
                     "environment_backend": {
                         "type": "string",
-                        "enum": ["gymnasium"],
+                        "enum": ["gymnasium", "isaacgym"],
                     },
                     "no_improve_limit": {"type": "integer", "minimum": 1},
                     "max_iterations": {"type": "integer", "minimum": 1},
@@ -112,7 +112,7 @@ def write_contract_files(contract_dir: Path) -> None:
                     },
                     "environment_backend": {
                         "type": "string",
-                        "enum": ["gymnasium"],
+                        "enum": ["gymnasium", "isaacgym"],
                     },
                     "best_candidate": {
                         "type": "object",

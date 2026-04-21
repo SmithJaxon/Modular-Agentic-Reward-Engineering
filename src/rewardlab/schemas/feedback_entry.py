@@ -6,8 +6,8 @@ Last Updated: 2026-04-02
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
-from enum import StrEnum
+from datetime import datetime, timezone
+from rewardlab.utils.compat import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -32,7 +32,7 @@ class FeedbackEntry(BaseModel):
     score: float | None = None
     comment: str = Field(min_length=1)
     artifact_ref: str | None = None
-    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     @field_validator("feedback_id", "candidate_id", "comment")
     @classmethod
@@ -51,3 +51,5 @@ class FeedbackEntry(BaseModel):
         if value is not None and not value:
             raise ValueError("artifact_ref must not be blank when provided")
         return value
+
+

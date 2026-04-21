@@ -7,18 +7,14 @@ Last Updated: 2026-04-16
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Callable, Protocol
 
 from rewardlab.agentic.contracts import ToolResult
 from rewardlab.experiments.artifacts import RunArtifactWriter
-from rewardlab.experiments.execution_service import ExperimentExecutionService
-from rewardlab.experiments.gymnasium_runner import (
-    GymnasiumExperimentRunner,
-    HumanoidPpoEvaluationConfig,
-)
+from rewardlab.experiments.execution_service import ExperimentExecutionService, ExperimentRunner
 from rewardlab.experiments.robustness_runner import RobustnessRunner
+from rewardlab.experiments.runner_factory import build_runner
 from rewardlab.schemas.agent_experiment import AgentExperimentRecord
 from rewardlab.schemas.experiment_run import ExperimentRun, RunStatus, RunType
 from rewardlab.schemas.reward_candidate import RewardCandidate
@@ -42,7 +38,7 @@ class RobustnessRunnerLike(Protocol):
 
 
 RobustnessRunnerFactory = Callable[
-    [Path, ExperimentExecutionService, GymnasiumExperimentRunner],
+    [Path, ExperimentExecutionService, ExperimentRunner],
     RobustnessRunnerLike,
 ]
 
@@ -102,27 +98,17 @@ class RunRobustnessProbesTool:
             default_service=self.execution_service,
             runtime_dir=runtime_dir,
         )
-        ppo = spec.execution.ppo
-        gymnasium_runner = GymnasiumExperimentRunner(
-            humanoid_ppo_config=(
-                HumanoidPpoEvaluationConfig(
-                    total_timesteps=ppo.total_timesteps,
-                    checkpoint_count=ppo.checkpoint_count,
-                    evaluation_run_count=ppo.eval_runs,
-                    evaluation_episodes_per_checkpoint=ppo.eval_episodes_per_checkpoint,
-                    n_envs=ppo.n_envs,
-                    device=ppo.device,
-                )
-                if ppo is not None
-                else None
-            )
+        runner = build_runner(
+            environment_backend=spec.environment.backend,
+            ppo_config=spec.execution.ppo,
+            isaac_config=spec.execution.isaac,
         )
-        runner = self.robustness_runner_factory(
+        robustness_runner = self.robustness_runner_factory(
             probe_matrix_path,
             execution_service,
-            gymnasium_runner,
+            runner,
         )
-        probe_runs, assessment = runner.run_candidate_probes(
+        probe_runs, assessment = robustness_runner.run_candidate_probes(
             candidate=selected_candidate,
             primary_run=primary_run,
             environment_backend=spec.environment.backend,
@@ -326,12 +312,13 @@ def _resolve_execution_service(
 def _build_robustness_runner(
     probe_matrix_path: Path,
     execution_service: ExperimentExecutionService,
-    gymnasium_runner: GymnasiumExperimentRunner,
+    runner: ExperimentRunner,
 ) -> RobustnessRunnerLike:
     """Build the default robustness runner for agentic probe execution."""
 
     return RobustnessRunner(
         probe_matrix_path=probe_matrix_path,
         experiment_execution_service=execution_service,
-        gymnasium_runner=gymnasium_runner,
+        gymnasium_runner=runner,
+        isaacgym_runner=runner,
     )

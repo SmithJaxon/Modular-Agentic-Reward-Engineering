@@ -7,8 +7,16 @@ Last Updated: 2026-04-10
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
-from typing import Annotated, Any
+import subprocess
+import sys
+from typing import Any, List, Optional
+
+try:
+    from typing import Annotated
+except ImportError:  # pragma: no cover - Python <3.9 compatibility
+    from typing_extensions import Annotated
 
 import typer
 
@@ -18,7 +26,15 @@ from rewardlab.agentic.eureka_metrics import (
     extract_primary_score_from_report,
     load_report_payload,
 )
+from rewardlab.agentic.spec_loader import load_experiment_spec
 from rewardlab.agentic.service import AgentExperimentService
+from rewardlab.experiments.backends.isaacgym_backend import IsaacGymBackend
+from rewardlab.experiments.isaacgym_runner import (
+    IsaacGymSubprocessConfig,
+    resolve_worker_command,
+)
+from rewardlab.schemas.agent_experiment import ExecutionIsaacConfig
+from rewardlab.schemas.session_config import EnvironmentBackend
 
 experiment_app = typer.Typer(help="Manage autonomous tool-calling experiments.")
 
@@ -64,7 +80,7 @@ def validate_experiment_spec(
 def run_experiment(
     file: Annotated[Path, typer.Option(..., exists=True, dir_okay=False)],
     json_output: Annotated[bool, typer.Option("--json")] = False,
-    experiment_id: Annotated[str | None, typer.Option()] = None,
+    experiment_id: Annotated[Optional[str], typer.Option()] = None,
 ) -> None:
     """Start and execute an autonomous experiment."""
 
@@ -126,9 +142,9 @@ def submit_human_feedback(
     experiment_id: Annotated[str, typer.Option(...)],
     candidate_id: Annotated[str, typer.Option(...)],
     comment: Annotated[str, typer.Option(...)],
-    score: Annotated[float | None, typer.Option()] = None,
-    request_id: Annotated[str | None, typer.Option()] = None,
-    artifact_ref: Annotated[str | None, typer.Option()] = None,
+    score: Annotated[Optional[float], typer.Option()] = None,
+    request_id: Annotated[Optional[str], typer.Option()] = None,
+    artifact_ref: Annotated[Optional[str], typer.Option()] = None,
     json_output: Annotated[bool, typer.Option("--json")] = False,
 ) -> None:
     """Submit one human feedback entry for an autonomous experiment."""
@@ -148,8 +164,8 @@ def submit_human_feedback(
 @experiment_app.command("benchmark-run")
 def benchmark_run(
     file: Annotated[Path, typer.Option(..., exists=True, dir_okay=False)],
-    seed: Annotated[list[int] | None, typer.Option("--seed")] = None,
-    benchmark_id: Annotated[str | None, typer.Option()] = None,
+    seed: Annotated[Optional[List[int]], typer.Option("--seed")] = None,
+    benchmark_id: Annotated[Optional[str], typer.Option()] = None,
     json_output: Annotated[bool, typer.Option("--json")] = False,
 ) -> None:
     """Run a multi-seed benchmark and export aggregate metrics."""
@@ -166,21 +182,21 @@ def benchmark_run(
 @experiment_app.command("eureka-metrics")
 def eureka_metrics(
     method_report: Annotated[
-        Path | None, typer.Option("--method-report", exists=True, dir_okay=False)
+        Optional[Path], typer.Option("--method-report", exists=True, dir_okay=False)
     ] = None,
-    method_score: Annotated[float | None, typer.Option("--method-score")] = None,
+    method_score: Annotated[Optional[float], typer.Option("--method-score")] = None,
     human_report: Annotated[
-        Path | None, typer.Option("--human-report", exists=True, dir_okay=False)
+        Optional[Path], typer.Option("--human-report", exists=True, dir_okay=False)
     ] = None,
-    human_score: Annotated[float | None, typer.Option("--human-score")] = None,
+    human_score: Annotated[Optional[float], typer.Option("--human-score")] = None,
     sparse_report: Annotated[
-        Path | None, typer.Option("--sparse-report", exists=True, dir_okay=False)
+        Optional[Path], typer.Option("--sparse-report", exists=True, dir_okay=False)
     ] = None,
-    sparse_score: Annotated[float | None, typer.Option("--sparse-score")] = None,
+    sparse_score: Annotated[Optional[float], typer.Option("--sparse-score")] = None,
     probe_report: Annotated[
-        list[Path] | None, typer.Option("--probe-report", exists=True, dir_okay=False)
+        Optional[List[Path]], typer.Option("--probe-report", exists=True, dir_okay=False)
     ] = None,
-    probe_score: Annotated[list[float] | None, typer.Option("--probe-score")] = None,
+    probe_score: Annotated[Optional[List[float]], typer.Option("--probe-score")] = None,
     clip_min: Annotated[float, typer.Option("--clip-min")] = 0.0,
     clip_max: Annotated[float, typer.Option("--clip-max")] = 3.0,
     json_output: Annotated[bool, typer.Option("--json")] = False,
@@ -217,7 +233,7 @@ def eureka_metrics(
         probe_reports=probe_report,
         explicit_probe_scores=probe_score,
     )
-    hacking_payload: dict[str, Any] | None = None
+    hacking_payload: Optional[dict[str, Any]] = None
     if len(probe_scores) > 0:
         hacking = compute_reward_hacking_metrics(
             method_score=resolved_method_score,
@@ -262,11 +278,56 @@ def eureka_metrics(
     _emit_payload(payload, json_output)
 
 
+@experiment_app.command("runtime-check")
+def runtime_check(
+    backend: EnvironmentBackend = typer.Option(EnvironmentBackend.ISAAC_GYM, "--backend"),
+    environment_id: Optional[List[str]] = typer.Option(None, "--environment-id"),
+    file: Optional[Path] = typer.Option(None, "--file", exists=True, dir_okay=False),
+    json_output: bool = typer.Option(False, "--json"),
+) -> None:
+    """Run backend runtime preflight checks before queueing full experiments."""
+
+    if backend != EnvironmentBackend.ISAAC_GYM:
+        payload = {
+            "backend": backend.value,
+            "status": "unsupported",
+            "reason": "runtime-check currently supports --backend isaacgym only",
+        }
+        _emit_payload(payload, json_output)
+        raise typer.Exit(code=1)
+
+    isaac_config = ExecutionIsaacConfig()
+    if file is not None:
+        spec = load_experiment_spec(file)
+        if backend != spec.environment.backend:
+            payload = {
+                "backend": backend.value,
+                "status": "error",
+                "reason": (
+                    f"runtime-check backend ({backend.value}) does not match "
+                    f"spec backend ({spec.environment.backend.value})"
+                ),
+            }
+            _emit_payload(payload, json_output)
+            raise typer.Exit(code=1)
+        isaac_config = spec.execution.isaac
+        if environment_id is None:
+            environment_id = [spec.environment.id]
+
+    payload = _isaac_runtime_check_payload(
+        environment_ids=environment_id,
+        isaac_config=isaac_config,
+    )
+    _emit_payload(payload, json_output)
+    if payload.get("status") != "ok":
+        raise typer.Exit(code=1)
+
+
 def _resolve_score_input(
     *,
     label: str,
-    report_path: Path | None,
-    explicit_score: float | None,
+    report_path: Optional[Path],
+    explicit_score: Optional[float],
 ) -> tuple[float, str]:
     """Resolve one required score either from report payload or explicit input."""
 
@@ -287,8 +348,8 @@ def _resolve_score_input(
 
 def _resolve_probe_scores(
     *,
-    probe_reports: list[Path] | None,
-    explicit_probe_scores: list[float] | None,
+    probe_reports: Optional[List[Path]],
+    explicit_probe_scores: Optional[List[float]],
 ) -> list[float]:
     """Return probe scores merged from explicit values and/or report files."""
 
@@ -301,3 +362,221 @@ def _resolve_probe_scores(
             score, _ = extract_primary_score_from_report(payload)
             scores.append(score)
     return scores
+
+
+def _isaac_runtime_check_payload(
+    *,
+    environment_ids: Optional[List[str]],
+    isaac_config: ExecutionIsaacConfig,
+) -> dict[str, Any]:
+    """Collect a structured Isaac runtime preflight report."""
+
+    task_ids = environment_ids if environment_ids and len(environment_ids) > 0 else [
+        "Cartpole",
+        "Humanoid",
+        "AllegroHand",
+    ]
+    worker_command_override = (
+        isaac_config.worker_command
+        if isaac_config.worker_command is not None and isaac_config.worker_command.strip()
+        else (os.getenv("REWARDLAB_ISAAC_WORKER_COMMAND", "").strip() or None)
+    )
+    worker_command = resolve_worker_command(
+        IsaacGymSubprocessConfig(worker_command=worker_command_override)
+    )
+    worker_probe = _probe_isaac_worker_health(worker_command, task_ids=task_ids)
+
+    backend = IsaacGymBackend(cfg_dir_override=isaac_config.cfg_dir)
+    controller_statuses = {
+        task_id: backend.get_runtime_status(task_id).model_dump(mode="json")
+        for task_id in task_ids
+    }
+    controller_available_tasks = sorted(backend.list_available_tasks())
+    controller_config_dir = backend.resolve_config_dir()
+    controller_import_status = _collect_isaac_import_status()
+
+    use_worker_task_status = (
+        worker_probe.get("status") == "ok"
+        and isinstance(worker_probe.get("checks"), dict)
+        and isinstance(worker_probe["checks"].get("task_status"), dict)
+    )
+    if use_worker_task_status:
+        statuses = {
+            task_id: worker_probe["checks"]["task_status"].get(task_id)
+            for task_id in task_ids
+        }
+        available_tasks = worker_probe["checks"].get("available_tasks", [])
+        config_dir = worker_probe["checks"].get("config_dir")
+    else:
+        statuses = controller_statuses
+        available_tasks = controller_available_tasks
+        config_dir = controller_config_dir
+
+    task_status_ready = all(
+        isinstance(statuses.get(task_id), dict) and bool(statuses[task_id].get("ready"))
+        for task_id in task_ids
+    )
+    worker_probe_ready = worker_probe.get("status") == "ok"
+    all_ready = task_status_ready and worker_probe_ready
+    return {
+        "backend": EnvironmentBackend.ISAAC_GYM.value,
+        "status": "ok" if all_ready else "error",
+        "python_executable": sys.executable,
+        "checks": {
+            "task_status": statuses,
+            "available_tasks": available_tasks,
+            "config_dir": config_dir,
+            "worker_command": worker_command,
+            "worker_probe": worker_probe,
+            "task_status_ready": task_status_ready,
+            "worker_probe_ready": worker_probe_ready,
+            "controller_imports": controller_import_status,
+            "controller_task_status": controller_statuses,
+            "controller_available_tasks": controller_available_tasks,
+            "controller_config_dir": controller_config_dir,
+        },
+    }
+
+
+def _probe_isaac_worker_health(worker_command: list[str], *, task_ids: list[str]) -> dict[str, Any]:
+    """Run worker-side healthcheck to validate split-runtime readiness."""
+
+    try:
+        completed = subprocess.run(
+            worker_command + ["--healthcheck"],
+            capture_output=True,
+            text=True,
+            timeout=90,
+            check=False,
+        )
+    except Exception as exc:
+        return {
+            "status": "error",
+            "error": f"{type(exc).__name__}: {exc}",
+            "checks": {},
+        }
+
+    stdout_text = completed.stdout.strip()
+    stderr_text = completed.stderr.strip()
+    if completed.returncode != 0:
+        return {
+            "status": "error",
+            "error": (
+                "worker healthcheck command failed with "
+                f"exit={completed.returncode}"
+            ),
+            "stdout_tail": _tail_lines(stdout_text),
+            "stderr_tail": _tail_lines(stderr_text),
+            "checks": {},
+        }
+
+    if not stdout_text:
+        return {
+            "status": "error",
+            "error": "worker healthcheck returned empty stdout",
+            "checks": {},
+        }
+    json_payload = _extract_json_payload(stdout_text)
+    if json_payload is None:
+        return {
+            "status": "error",
+            "error": "worker healthcheck stdout did not contain a JSON payload",
+            "stdout_tail": _tail_lines(stdout_text),
+            "stderr_tail": _tail_lines(stderr_text),
+            "checks": {},
+        }
+    try:
+        payload = json.loads(json_payload)
+    except json.JSONDecodeError as exc:
+        return {
+            "status": "error",
+            "error": f"worker healthcheck did not emit valid JSON: {exc}",
+            "stdout_tail": _tail_lines(stdout_text),
+            "stderr_tail": _tail_lines(stderr_text),
+            "checks": {},
+        }
+
+    checks = payload.get("checks")
+    if not isinstance(checks, dict):
+        checks = {}
+    raw_task_status = checks.get("task_status")
+    if not isinstance(raw_task_status, dict):
+        raw_task_status = {}
+    normalized_task_status = {
+        task_id: raw_task_status.get(task_id)
+        for task_id in task_ids
+    }
+    checks["task_status"] = normalized_task_status
+    return {
+        "status": str(payload.get("status", "error")),
+        "runtime_status": payload.get("runtime_status"),
+        "checks": checks,
+    }
+
+
+def _extract_json_payload(stdout_text: str) -> str | None:
+    """Extract the most relevant JSON object from mixed stdout logs."""
+
+    if not stdout_text:
+        return None
+    stripped = stdout_text.strip()
+    if stripped.startswith("{") and stripped.endswith("}"):
+        return stripped
+    for line in reversed(stripped.splitlines()):
+        candidate = line.strip()
+        if not candidate:
+            continue
+        if not (candidate.startswith("{") and candidate.endswith("}")):
+            continue
+        try:
+            json.loads(candidate)
+            return candidate
+        except json.JSONDecodeError:
+            continue
+    return None
+
+
+def _tail_lines(text: str, count: int = 20) -> str:
+    """Return compact trailing log lines from subprocess output."""
+
+    if not text:
+        return ""
+    lines = text.splitlines()
+    if len(lines) <= count:
+        return "\n".join(lines)
+    return "\n".join(lines[-count:])
+
+
+def _collect_isaac_import_status() -> dict[str, Any]:
+    """Return import/cuda details relevant to Isaac runtime validation."""
+
+    payload: dict[str, Any] = {}
+    try:
+        import torch  # type: ignore[import-not-found]
+
+        payload["torch_importable"] = True
+        payload["torch_version"] = getattr(torch, "__version__", None)
+        payload["cuda_available"] = bool(torch.cuda.is_available())
+        payload["cuda_device_count"] = int(torch.cuda.device_count())
+    except Exception as exc:
+        payload["torch_importable"] = False
+        payload["torch_error"] = f"{type(exc).__name__}: {exc}"
+        payload["cuda_available"] = False
+        payload["cuda_device_count"] = 0
+
+    try:
+        import isaacgym  # noqa: F401  # type: ignore[import-not-found]
+
+        payload["isaacgym_importable"] = True
+    except Exception as exc:
+        payload["isaacgym_importable"] = False
+        payload["isaacgym_error"] = f"{type(exc).__name__}: {exc}"
+
+    try:
+        import isaacgymenvs  # noqa: F401  # type: ignore[import-not-found]
+
+        payload["isaacgymenvs_importable"] = True
+    except Exception as exc:
+        payload["isaacgymenvs_importable"] = False
+        payload["isaacgymenvs_error"] = f"{type(exc).__name__}: {exc}"
+    return payload

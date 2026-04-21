@@ -68,7 +68,7 @@ def extract_primary_score_from_report(payload: dict[str, Any]) -> tuple[float, s
     metadata = experiment.get("metadata")
     if isinstance(metadata, dict):
         final_eval_mean = metadata.get("final_eval_mean_score")
-        if isinstance(final_eval_mean, int | float):
+        if isinstance(final_eval_mean, (int, float)):
             return float(final_eval_mean), "experiment.metadata.final_eval_mean_score"
 
     candidates = payload.get("candidates")
@@ -81,7 +81,7 @@ def extract_primary_score_from_report(payload: dict[str, Any]) -> tuple[float, s
                 if candidate.get("candidate_id") != best_candidate_id:
                     continue
                 aggregate_score = candidate.get("aggregate_score")
-                if isinstance(aggregate_score, int | float):
+                if isinstance(aggregate_score, (int, float)):
                     return float(aggregate_score), "best_candidate.aggregate_score"
 
     runs = payload.get("runs")
@@ -253,6 +253,7 @@ def _score_from_metrics(metrics: dict[str, Any]) -> float | None:
         "environment_reward",
     ):
         value = metrics.get(key)
-        if isinstance(value, int | float):
+        if isinstance(value, (int, float)):
             return float(value)
     return None
+

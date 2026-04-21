@@ -6,8 +6,8 @@ Last Updated: 2026-04-02
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
-from enum import StrEnum
+from datetime import datetime, timezone
+from rewardlab.utils.compat import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -38,7 +38,7 @@ class RobustnessAssessment(BaseModel):
     degradation_ratio: float = Field(ge=0.0)
     risk_level: RiskLevel
     risk_notes: str = Field(min_length=1)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     @field_validator("assessment_id", "candidate_id", "primary_run_id", "risk_notes")
     @classmethod
@@ -66,3 +66,5 @@ class RobustnessAssessment(BaseModel):
         if self.variant_count != len(self.probe_run_ids):
             raise ValueError("variant_count must match the number of probe_run_ids")
         return self
+
+

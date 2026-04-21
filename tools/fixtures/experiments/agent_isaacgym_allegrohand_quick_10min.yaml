@@ -1,0 +1,103 @@
+version: 1
+experiment_name: isaacgym_smoke_allegrohand_quick_10min
+objective: >
+  Quick Isaac Gym AllegroHand smoke run for local validation; target under ten
+  minutes while still executing the full autonomous reward loop.
+
+initialization:
+  mode: default
+  default_seed_candidate_count: 1
+
+environment:
+  backend: isaacgym
+  id: AllegroHand
+  seed: 7
+
+baseline_reward:
+  mode: file
+  path: tools/fixtures/rewards/isaacgym/allegrohand_human_baseline.py
+  entrypoint_name: reward
+
+models:
+  controller:
+    model: gpt-5-mini
+    reasoning_effort: medium
+    max_completion_tokens: 12000
+  reward_designer:
+    model: gpt-5-mini
+    reasoning_effort: medium
+    max_completion_tokens: 12000
+  analyzer:
+    model: gpt-5-nano
+    reasoning_effort: low
+    max_completion_tokens: 4000
+
+budgets:
+  api:
+    max_total_tokens: 300000
+    max_total_usd: 10.0
+    max_completion_tokens_per_call: 12000
+  time:
+    max_wall_clock_minutes: 25
+  compute:
+    max_experiments: 10
+    max_total_train_timesteps: 280000
+    max_reward_generations: 8
+    max_parallel_experiments: 1
+
+governance:
+  stopping:
+    max_iterations: 2
+    plateau_window: 1
+    min_relative_improvement: 0.01
+    max_no_improve_streak: 1
+    max_failed_actions: 3
+  human_feedback:
+    allow: false
+    feedback_gate: none
+    max_requests: 0
+
+tool_policy:
+  allowed_tools:
+    - run_experiment
+    - summarize_run_artifacts
+    - propose_reward_revision
+    - validate_reward_program
+    - compare_candidates
+    - estimate_cost_and_risk
+    - stop_or_continue_recommendation
+  default_timeout_seconds: 1200
+  max_retries_per_tool: 1
+
+agent_loop:
+  encourage_run_all_after_each_experiment: true
+  samples_per_iteration: 3
+  enforce_progress_before_stop: true
+
+execution:
+  ppo:
+    total_timesteps: 20000
+    eval_runs: 1
+    checkpoint_count: 2
+    eval_episodes_per_checkpoint: 1
+    n_envs: 4
+    device: auto
+  final_evaluation:
+    enabled: false
+    num_eval_runs: 0
+  comparison:
+    enabled: true
+    human_reward_path: tools/fixtures/rewards/isaacgym/allegrohand_human_baseline.py
+    sparse_reward_path: tools/fixtures/rewards/isaacgym/allegrohand_sparse.py
+    entrypoint_name: reward
+    num_eval_runs: 1
+    seed_start: 2000
+    probe_run_count: 1
+    probe_seed_start: 3000
+    total_timesteps_override: 6000
+    eval_runs_override: 1
+
+outputs:
+  runtime_dir: .rewardlab
+  report_detail: summary
+  save_decision_trace: true

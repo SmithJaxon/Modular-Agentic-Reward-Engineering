@@ -9,7 +9,11 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Annotated
+from typing import Optional
+try:
+    from typing import Annotated
+except ImportError:  # pragma: no cover - Python <3.9 compatibility
+    from typing_extensions import Annotated
 
 import typer
 
@@ -56,7 +60,7 @@ def start_session(
     max_iterations: Annotated[int, typer.Option(..., min=1)],
     feedback_gate: Annotated[FeedbackGate, typer.Option(...)],
     json_output: Annotated[bool, typer.Option("--json")] = False,
-    session_id: Annotated[str | None, typer.Option()] = None,
+    session_id: Annotated[Optional[str], typer.Option()] = None,
 ) -> None:
     """Start a new optimization session."""
 

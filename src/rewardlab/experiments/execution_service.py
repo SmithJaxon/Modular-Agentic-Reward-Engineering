@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any, Protocol
 
 from rewardlab.experiments.artifacts import RunArtifactBundle, RunArtifactWriter
@@ -120,6 +120,7 @@ class ExperimentExecutionService:
         reward_program = load_reward_program_from_candidate(
             candidate,
             entrypoint_name=request.entrypoint_name,
+            runtime_compat_profile=request.backend.value,
         )
         started_at = self.clock()
         if reward_program.validation_status != RewardProgramStatus.VALID:
@@ -233,4 +234,5 @@ def _artifact_refs_from_bundle(bundle: RunArtifactBundle) -> list[str]:
 def _utc_now() -> datetime:
     """Return the current UTC time for execution timestamps."""
 
-    return datetime.now(UTC)
+    return datetime.now(timezone.utc)
+

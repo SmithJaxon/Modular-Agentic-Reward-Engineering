@@ -6,15 +6,16 @@ Last Updated: 2026-04-10
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
-from enum import StrEnum
+from datetime import datetime, timezone
+from rewardlab.utils.compat import StrEnum
+from typing import Union
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from rewardlab.schemas.session_config import EnvironmentBackend, FeedbackGate
 
-MetadataValue = str | int | float | bool
+MetadataValue = Union[str, int, float, bool]
 
 __all__ = [
     "ActionType",
@@ -22,6 +23,7 @@ __all__ = [
     "AgentLoopConfig",
     "ExecutionComparisonConfig",
     "ExecutionFinalEvaluationConfig",
+    "ExecutionIsaacConfig",
     "AgentBudgetLedger",
     "AgentDecisionRecord",
     "AgentExperimentRecord",
@@ -359,6 +361,15 @@ class ExecutionComparisonConfig(BaseModel):
         return value
 
 
+class ExecutionIsaacConfig(BaseModel):
+    """Isaac-specific execution controls for split-runtime deployments."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    worker_command: str | None = None
+    cfg_dir: str | None = None
+
+
 class ExecutionConfig(BaseModel):
     """Execution configuration by environment family."""
 
@@ -370,6 +381,7 @@ class ExecutionConfig(BaseModel):
         default_factory=ExecutionFinalEvaluationConfig
     )
     comparison: ExecutionComparisonConfig = Field(default_factory=ExecutionComparisonConfig)
+    isaac: ExecutionIsaacConfig = Field(default_factory=ExecutionIsaacConfig)
 
 
 class OutputConfig(BaseModel):
@@ -444,7 +456,7 @@ class AgentExperimentRecord(BaseModel):
     experiment_id: str = Field(min_length=1)
     status: AgentExperimentStatus
     spec: AgentExperimentSpec
-    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     started_at: datetime | None = None
     ended_at: datetime | None = None
     stop_reason: str | None = None
@@ -480,7 +492,7 @@ class AgentDecisionRecord(BaseModel):
     result_payload: dict[str, Any] = Field(default_factory=dict)
     consumed_tokens: int = 0
     consumed_usd: float = 0.0
-    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     @field_validator("decision_id", "experiment_id", "rationale", "result_status", "result_summary")
     @classmethod
@@ -490,3 +502,5 @@ class AgentDecisionRecord(BaseModel):
         if not value:
             raise ValueError("value must not be blank")
         return value
+
+

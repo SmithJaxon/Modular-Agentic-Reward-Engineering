@@ -6,7 +6,7 @@ Last Updated: 2026-04-02
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from rewardlab.feedback.demo_artifacts import DemoArtifactTracker
 from rewardlab.schemas.feedback_entry import FeedbackEntry, FeedbackSourceType
@@ -54,5 +54,6 @@ class HumanFeedbackService:
 def _feedback_id(session_id: str, source_type: FeedbackSourceType) -> str:
     """Return a timestamp-based feedback identifier."""
 
-    timestamp = datetime.now(UTC).strftime("%Y%m%d%H%M%S%f")
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
     return f"{session_id}-{source_type.value}-feedback-{timestamp}"
+

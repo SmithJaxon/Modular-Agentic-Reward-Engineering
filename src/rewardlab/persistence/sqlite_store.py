@@ -184,4 +184,4 @@ def _decode_payload(raw_payload: str) -> dict[str, Any]:
     decoded = json.loads(raw_payload)
     if not isinstance(decoded, dict):
         raise ValueError("stored payload must decode to a JSON object")
-    return cast(dict[str, Any], decoded)
+    return cast(dict, decoded)

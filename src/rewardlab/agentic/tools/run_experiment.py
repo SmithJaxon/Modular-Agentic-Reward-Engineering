@@ -1,5 +1,5 @@
 """
-Summary: Worker tool that executes one candidate experiment run via Gymnasium.
+Summary: Worker tool that executes one candidate experiment run via configured backend.
 Created: 2026-04-10
 Last Updated: 2026-04-10
 """
@@ -11,18 +11,19 @@ from pathlib import Path
 
 from rewardlab.agentic.contracts import ToolResult
 from rewardlab.experiments.artifacts import RunArtifactWriter
-from rewardlab.experiments.execution_service import ExecutionRequest, ExperimentExecutionService
-from rewardlab.experiments.gymnasium_runner import (
-    GymnasiumExperimentRunner,
-    HumanoidPpoEvaluationConfig,
+from rewardlab.experiments.execution_service import (
+    ExecutionRequest,
+    ExperimentExecutionService,
+    ExperimentRunner,
 )
+from rewardlab.experiments.runner_factory import build_runner
 from rewardlab.schemas.agent_experiment import AgentExperimentRecord
 from rewardlab.schemas.experiment_run import ExecutionMode, ExperimentRun
 from rewardlab.schemas.reward_candidate import RewardCandidate
 
 
 class RunExperimentTool:
-    """Execute a candidate on the real Gymnasium backend and return metrics."""
+    """Execute a candidate on the real runtime backend and return metrics."""
 
     def __init__(
         self,
@@ -51,21 +52,11 @@ class RunExperimentTool:
                 payload={},
             )
         spec = record.spec
-        ppo = spec.execution.ppo
         rollout = spec.execution.rollout
-        runner = GymnasiumExperimentRunner(
-            humanoid_ppo_config=(
-                HumanoidPpoEvaluationConfig(
-                    total_timesteps=ppo.total_timesteps,
-                    checkpoint_count=ppo.checkpoint_count,
-                    evaluation_run_count=ppo.eval_runs,
-                    evaluation_episodes_per_checkpoint=ppo.eval_episodes_per_checkpoint,
-                    n_envs=ppo.n_envs,
-                    device=ppo.device,
-                )
-                if ppo is not None
-                else None
-            )
+        runner = build_runner(
+            environment_backend=spec.environment.backend,
+            ppo_config=spec.execution.ppo,
+            isaac_config=spec.execution.isaac,
         )
         execution_service = _resolve_execution_service(
             default_service=self.execution_service,
@@ -250,7 +241,7 @@ def _build_request(
 def _execute_candidate_run(
     *,
     execution_service: ExperimentExecutionService,
-    runner: GymnasiumExperimentRunner,
+    runner: ExperimentRunner,
     candidate: RewardCandidate,
     request: ExecutionRequest,
 ) -> ExperimentRun:

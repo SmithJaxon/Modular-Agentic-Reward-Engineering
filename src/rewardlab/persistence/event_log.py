@@ -9,11 +9,11 @@ from __future__ import annotations
 import json
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, List, Union
 
-JsonValue = str | int | float | bool | None | list["JsonValue"] | dict[str, "JsonValue"]
+JsonValue = Union[str, int, float, bool, None, List["JsonValue"], Dict[str, "JsonValue"]]
 
 
 def _ensure_json_value(value: Any) -> JsonValue:
@@ -38,7 +38,7 @@ def _ensure_json_value(value: Any) -> JsonValue:
 def _utc_timestamp() -> str:
     """Return a UTC timestamp in ISO 8601 format with second precision."""
 
-    return datetime.now(tz=UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return datetime.now(tz=timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 @dataclass(frozen=True, slots=True)
@@ -203,3 +203,4 @@ def load_event_log(path: Path) -> JsonlEventLog:
     """Return a JSONL event log wrapper for the given path."""
 
     return JsonlEventLog(path)
+

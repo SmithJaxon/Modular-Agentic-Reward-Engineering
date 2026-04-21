@@ -7,7 +7,7 @@ Last Updated: 2026-04-02
 from __future__ import annotations
 
 from datetime import datetime
-from enum import StrEnum
+from rewardlab.utils.compat import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -130,3 +130,4 @@ def _is_default_variant_label(value: str) -> bool:
     """Return whether a variant label names the default baseline condition."""
 
     return value.strip().casefold() in {"default", "baseline", "control"}
+

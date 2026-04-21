@@ -48,6 +48,7 @@ Important:
 - `requirements-dev.txt`: base + lint/test/typecheck tooling
 - `requirements-runtime-gymnasium.txt`: base + Gymnasium MuJoCo runtime
 - `requirements-runtime-humanoid.txt`: Gymnasium runtime + Torch + SB3
+- `requirements-runtime-isaacgym.txt`: base + Torch + IsaacGymEnvs + rl-games
 - `requirements-all.txt`: dev + Humanoid runtime bundle
 
 For Humanoid PPO runtime:
@@ -55,6 +56,51 @@ For Humanoid PPO runtime:
 ```bash
 python -m pip install -r requirements-runtime-humanoid.txt
 ```
+
+For Isaac Gym experiments:
+
+```bash
+python -m pip install -r requirements-runtime-isaacgym.txt
+python -m pip install --no-deps git+https://github.com/NVIDIA-Omniverse/IsaacGymEnvs.git
+```
+
+Note:
+
+- NVIDIA `isaacgym` Python bindings may still need to be installed manually in the same `.venv`.
+- For CHPC split-runtime (controller py3.12 + worker py3.8), install Isaac dependencies in
+  the py3.8 worker env and use `python3.8 tools/scripts/isaac_worker_py38.py` as
+  `execution.isaac.worker_command`.
+
+### Isolated Isaac Gym Runtime (WSL + Docker)
+
+Use this when you need Isaac Gym Preview 4 isolation from the project Python 3.12 environment.
+
+Prerequisites:
+
+- Docker Desktop with WSL2 backend
+- NVIDIA Container Toolkit support in Docker Desktop
+- local Isaac Gym Preview 4 archive at `tools/vendor/IsaacGym_Preview_4_Package.tar.gz`
+
+Build and start:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools/scripts/setup_isaacgym_docker.ps1
+```
+
+Run smoke check:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools/scripts/isaacgym_smoke.ps1
+```
+
+Notes:
+
+- This isolated stack uses Python 3.8 inside Linux container, because Isaac Gym Preview 4
+  ships py36/37/38 bindings only.
+- Setup script now validates both imports and target task registry entries for
+  `Cartpole`, `Humanoid`, and `AllegroHand`.
+- Your main project environment remains Python 3.12 and untouched.
+- Use `rewardlab experiment runtime-check --backend isaacgym --json` before long runs.
 
 ## CLI Quick Check
 
@@ -137,6 +183,29 @@ rewardlab experiment run --file tools/fixtures/experiments/agent_humanoid_eureka
 rewardlab experiment run --file tools/fixtures/experiments/agent_humanoid_quick_affordable.yaml --json
 ```
 
+### Isaac Gym Eureka-comparable fixtures
+
+```bash
+rewardlab experiment run --file tools/fixtures/experiments/agent_isaacgym_humanoid_eureka_default.yaml --json
+rewardlab experiment run --file tools/fixtures/experiments/agent_isaacgym_humanoid_human_baseline.yaml --json
+rewardlab experiment run --file tools/fixtures/experiments/agent_isaacgym_humanoid_quick_10min.yaml --json
+```
+
+### Isaac runtime preflight
+
+```bash
+rewardlab experiment runtime-check --backend isaacgym --json
+rewardlab experiment runtime-check --backend isaacgym --file tools/fixtures/experiments/agent_isaacgym_chpc_profile.yaml --json
+```
+
+This check reports:
+
+- import readiness (`torch`, `isaacgym`, `isaacgymenvs`)
+- CUDA visibility/device count
+- task registry visibility
+- resolved Isaac cfg path
+- resolved isolated worker command
+
 ## Agent Loop Controls
 
 Use these fields in spec `agent_loop` and `governance.stopping` to control when the agent keeps searching vs stops:
@@ -177,6 +246,22 @@ Comparison metrics in final reports:
   retention under probe contexts).
   - Implemented as `probe_mean_score / abs(method_score)` and reported alongside
     `perils_hacking_severity = 1 - clip(relative_performance, 0, 1)`.
+
+Isaac split-runtime controls:
+
+- `execution.isaac.worker_command`: explicit command used to launch isolated Isaac worker.
+  - For CHPC split-runtime, prefer `python3.8 tools/scripts/isaac_worker_py38.py`.
+- `execution.isaac.cfg_dir`: optional override for IsaacGymEnvs Hydra cfg directory.
+- `REWARDLAB_ISAAC_WORKER_COMMAND`: env fallback when spec does not set `worker_command`.
+- `REWARDLAB_ISAAC_WORKER_PYTHON`: fallback python executable when no worker command is set.
+- `REWARDLAB_ISAAC_CFG_DIR`: env fallback for cfg path resolution.
+- `REWARDLAB_ISAAC_RUN_TIMEOUT_SECONDS`: max time per isolated worker run.
+
+CHPC notes and Slurm template:
+
+- [`docs/chpc.md`](/C:/Users/smith/LocalClasses/AdvAi/Modular-Agentic-Reward-Engineering/docs/chpc.md)
+- [`tools/slurm/chpc_rewardlab_isaac.sbatch`](/C:/Users/smith/LocalClasses/AdvAi/Modular-Agentic-Reward-Engineering/tools/slurm/chpc_rewardlab_isaac.sbatch)
+- [`tools/fixtures/experiments/agent_isaacgym_chpc_profile.yaml`](/C:/Users/smith/LocalClasses/AdvAi/Modular-Agentic-Reward-Engineering/tools/fixtures/experiments/agent_isaacgym_chpc_profile.yaml)
 
 Recommended scheduling on one RTX 3090 and ~18 CPU cores:
 

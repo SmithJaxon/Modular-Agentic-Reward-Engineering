@@ -11,7 +11,7 @@ import inspect
 import json
 from collections.abc import Sequence
 from dataclasses import dataclass
-from enum import StrEnum
+from rewardlab.utils.compat import StrEnum
 from typing import Any, Literal, Protocol, cast
 
 from rewardlab.experiments.reward_program import load_reward_program
@@ -213,6 +213,7 @@ class OpenAIRewardDesigner:
                         content=_build_retry_instruction(
                             error_message=str(last_error),
                             previous_content=last_content,
+                            environment_backend=request.environment_backend,
                             allowed_parameter_names=allowed_parameter_names,
                             disallowed_reward_signatures=tuple(
                                 sorted(disallowed_reward_signatures)
@@ -236,6 +237,7 @@ class OpenAIRewardDesigner:
                     response.content,
                     session_id=request.session_id,
                     iteration_index=request.next_iteration_index,
+                    environment_backend=request.environment_backend,
                     allowed_parameter_names=allowed_parameter_names,
                     disallowed_reward_signatures=disallowed_reward_signatures,
                     model_name=self.config.model,
@@ -330,6 +332,10 @@ def _build_design_prompt(
         if len(disallowed_signatures) > 0
         else "none"
     )
+    backend_constraints = _backend_specific_prompt_constraints(request.environment_backend)
+    eureka_constraints = _eureka_hyperparameter_prompt_constraints(
+        request.environment_backend
+    )
     return (
         f"Session: {request.session_id}\n"
         f"Iteration to produce: {request.next_iteration_index}\n"
@@ -359,6 +365,8 @@ def _build_design_prompt(
         "- Avoid cyclic revisions: do not repeat any previously used reward signature.\n"
         f"- Disallowed historical reward signatures: {signature_line}.\n"
         "- Keep the reward concise, executable, and directly aligned with the objective.\n"
+        f"{backend_constraints}"
+        f"{eureka_constraints}"
     )
 
 
@@ -367,6 +375,7 @@ def _parse_design_response(
     *,
     session_id: str,
     iteration_index: int,
+    environment_backend: EnvironmentBackend,
     allowed_parameter_names: Sequence[str],
     disallowed_reward_signatures: set[str],
     model_name: str,
@@ -390,10 +399,15 @@ def _parse_design_response(
     reward_definition = _require_nonblank_string(payload, "reward_definition")
     change_summary = _require_nonblank_string(payload, "change_summary")
     proposed_changes = _require_nonempty_string_list(payload, "proposed_changes")
+    _validate_backend_specific_reward_source(
+        reward_definition,
+        environment_backend=environment_backend,
+    )
 
     preview_program = load_reward_program(
         candidate_id=f"{session_id}-preview-{iteration_index:03d}",
         source_text=reward_definition,
+        runtime_compat_profile=environment_backend.value,
     )
     if preview_program.validation_status.value != "valid":
         raise RuntimeError(
@@ -489,6 +503,7 @@ def _build_retry_instruction(
     *,
     error_message: str,
     previous_content: str,
+    environment_backend: EnvironmentBackend,
     allowed_parameter_names: Sequence[str],
     disallowed_reward_signatures: Sequence[str],
 ) -> str:
@@ -512,7 +527,79 @@ def _build_retry_instruction(
         "- Do not repeat these historical reward signatures: "
         f"{disallowed}.\n"
         "- Keep the reward executable Python source without Markdown fences.\n"
+        f"{_backend_specific_prompt_constraints(environment_backend)}"
+        f"{_eureka_hyperparameter_prompt_constraints(environment_backend)}"
     )
+
+
+def _backend_specific_prompt_constraints(environment_backend: EnvironmentBackend) -> str:
+    """Return backend-specific codegen constraints for reward authoring."""
+
+    if environment_backend != EnvironmentBackend.ISAAC_GYM:
+        return ""
+    return (
+        "- Isaac Gym compatibility mode: target Python 3.8 and Torch 1.10 APIs only.\n"
+        "- Do NOT use torch.compile or @torch.compile.\n"
+        "- Do NOT use torch.func, torch.vmap, torch.autocast, torch.cuda.amp, or Torch 2-only APIs.\n"
+        "- Avoid tensor reshape/view/permute assumptions on observations/actions.\n"
+        "- Prefer scalar-safe signals (env_reward and numeric info fields) over direct tensor math.\n"
+        "- Keep imports minimal and robust for Isaac Gym Preview 4.\n"
+    )
+
+
+def _eureka_hyperparameter_prompt_constraints(
+    environment_backend: EnvironmentBackend,
+) -> str:
+    """Return fixed Eureka-comparable hyperparameter guidance for reward generation."""
+
+    if environment_backend != EnvironmentBackend.ISAAC_GYM:
+        return ""
+    return (
+        "- Hyperparameters are fixed to Eureka-comparable settings and must be treated as "
+        "external constants.\n"
+        "- Do not propose or imply optimizer/training schedule changes in reward code/comments.\n"
+        "- Assume this fixed schedule: 5 iterations, 16 samples per iteration, intermediate "
+        "evaluation uses 1 PPO run, final evaluation uses 5 PPO runs, and 10 checkpoints.\n"
+        "- Focus only on improving reward logic under these fixed settings.\n"
+    )
+
+
+def _validate_backend_specific_reward_source(
+    reward_definition: str,
+    *,
+    environment_backend: EnvironmentBackend,
+) -> None:
+    """Reject backend-incompatible reward source patterns before execution."""
+
+    if environment_backend != EnvironmentBackend.ISAAC_GYM:
+        return
+    lowered = reward_definition.lower()
+    disallowed_snippets = (
+        ".reshape(",
+        ".view(",
+        ".permute(",
+        ".transpose(",
+        "torch.reshape(",
+        "torch.view(",
+        "torch.permute(",
+        "torch.transpose(",
+        "observation[",
+        "state[",
+        "next_observation[",
+        "previous_observation[",
+        "action[",
+        "observation.",
+        "state.",
+        "next_observation.",
+        "previous_observation.",
+        "action.",
+    )
+    for snippet in disallowed_snippets:
+        if snippet in lowered:
+            raise RuntimeError(
+                "reward designer generated Isaac-incompatible tensor-shape logic; "
+                f"disallowed snippet: {snippet}"
+            )
 
 
 def _candidate_reward_signatures(candidates: Sequence[RewardCandidate]) -> set[str]:
@@ -597,3 +684,4 @@ def _tokenize(text: str) -> list[str]:
     if current:
         tokens.append("".join(current))
     return tokens
+

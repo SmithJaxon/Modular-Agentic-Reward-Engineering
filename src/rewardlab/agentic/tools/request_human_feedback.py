@@ -6,7 +6,7 @@ Last Updated: 2026-04-10
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from rewardlab.agentic.contracts import ToolResult
 from rewardlab.schemas.agent_experiment import AgentExperimentRecord
@@ -53,7 +53,7 @@ class RequestHumanFeedbackTool:
             )
         request_id = (
             f"{record.experiment_id}-feedback-request-"
-            f"{datetime.now(UTC).strftime('%Y%m%d%H%M%S%f')}"
+            f"{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}"
         )
         return ToolResult(
             status="ok",
@@ -87,3 +87,4 @@ def _select_candidate(
     if scored:
         return max(scored, key=lambda candidate: candidate.aggregate_score or float("-inf"))
     return max(candidates, key=lambda candidate: candidate.iteration_index)
+

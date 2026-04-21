@@ -8,10 +8,10 @@ from __future__ import annotations
 
 import inspect
 import os
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from numbers import Real
-from typing import Any, Protocol, cast
+from typing import Any, Callable, Optional, Protocol, cast
 
 import gymnasium as gym
 
@@ -97,7 +97,7 @@ class PredictiveTrainer(Protocol):
         """Return the action selected for the supplied observation."""
 
 
-PpoTrainerFactory = Callable[[Any, int | None, HumanoidPpoEvaluationConfig], PredictiveTrainer]
+PpoTrainerFactory = Callable[[Any, Optional[int], HumanoidPpoEvaluationConfig], PredictiveTrainer]
 
 
 class GymnasiumExperimentRunner:
