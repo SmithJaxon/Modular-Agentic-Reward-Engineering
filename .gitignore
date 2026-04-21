@@ -21,6 +21,7 @@ __pycache__/
 .venv/
 venv/
 .rewardlab*/
+codex-attempt/
 src/rewardlab.egg-info/
 
 # LaTeX build artifacts
