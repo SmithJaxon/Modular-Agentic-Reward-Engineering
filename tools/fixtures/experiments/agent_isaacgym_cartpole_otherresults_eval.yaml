@@ -1,0 +1,103 @@
+version: 1
+experiment_name: isaacgym_cartpole_otherresults_eval
+objective: >
+  Evaluate an externally provided Cartpole reward under RewardLab final-eval,
+  human-normalized comparison, and probe-based reward-hacking metrics.
+
+initialization:
+  mode: human
+
+environment:
+  backend: isaacgym
+  id: Cartpole
+  seed: 13
+
+baseline_reward:
+  mode: file
+  path: tools/fixtures/rewards/isaacgym/cartpole_otherresults_compatible.py
+  entrypoint_name: reward
+
+models:
+  controller:
+    model: gpt-5-mini
+    reasoning_effort: high
+    max_completion_tokens: 64000
+  reward_designer:
+    model: gpt-5-mini
+    reasoning_effort: high
+    max_completion_tokens: 64000
+  analyzer:
+    model: gpt-5-nano
+    reasoning_effort: low
+    max_completion_tokens: 8000
+
+budgets:
+  api:
+    max_total_tokens: 3000000
+    max_total_usd: 120.0
+    max_completion_tokens_per_call: 64000
+  time:
+    max_wall_clock_minutes: 1440
+  compute:
+    # Force single-candidate evaluation (no iterative reward generation before report).
+    max_experiments: 1
+    max_total_train_timesteps: 100000000
+    max_reward_generations: 1
+    max_parallel_experiments: 1
+
+governance:
+  stopping:
+    max_iterations: 1
+    plateau_window: 3
+    min_relative_improvement: 0.005
+    max_no_improve_streak: 6
+    max_failed_actions: 6
+  human_feedback:
+    allow: false
+    feedback_gate: none
+    max_requests: 0
+
+tool_policy:
+  allowed_tools:
+    - run_experiment
+    - summarize_run_artifacts
+    - propose_reward_revision
+    - validate_reward_program
+    - compare_candidates
+    - estimate_cost_and_risk
+    - stop_or_continue_recommendation
+  default_timeout_seconds: 7200
+  max_retries_per_tool: 2
+
+agent_loop:
+  encourage_run_all_after_each_experiment: true
+  samples_per_iteration: 1
+  enforce_progress_before_stop: true
+
+execution:
+  ppo:
+    total_timesteps: 100000
+    eval_runs: 1
+    checkpoint_count: 10
+    eval_episodes_per_checkpoint: 1
+    n_envs: 24
+    device: auto
+  final_evaluation:
+    enabled: true
+    num_eval_runs: 5
+    seed_start: 1000
+  comparison:
+    enabled: true
+    human_reward_path: tools/fixtures/rewards/isaacgym/cartpole_human_baseline.py
+    sparse_reward_path: tools/fixtures/rewards/isaacgym/cartpole_sparse.py
+    entrypoint_name: reward
+    num_eval_runs: 5
+    seed_start: 2000
+    probe_run_count: 2
+    probe_seed_start: 3000
+
+outputs:
+  runtime_dir: .rewardlab
+  report_detail: full
+  save_decision_trace: true
+

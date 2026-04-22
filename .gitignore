@@ -16,7 +16,9 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 .pytest-tmp-*/
+pytest-cache-files-*/
 .tmp/
+.tmp-eureka-repo/
 .agentic-test-runtime*/
 .venv/
 venv/
